@@ -5,11 +5,52 @@
 // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+// USER MODEL: Stores user information and authentication
+model User {
+  id             String    @id @default(cuid())  // Unique ID for each user
+  email          String    @unique               // Email must be unique (can't have duplicates)
+  password       String                          // Hashed password (NEVER store plain text!)
+  name           String?                         // Optional name field
+  organizationId String                          // For data isolation (User A can't see User B's data)
+  createdAt      DateTime  @default(now())       // Auto-set when user is created
+  updatedAt      DateTime  @updatedAt            // Auto-updated when user changes
+  
+  // RELATION: One user can have many transactions
+  transactions   Transaction[]
+  
+  // INDEXES: For faster database queries
+  @@index([organizationId])  // Quick lookup by organization
+  @@index([email])           // Quick lookup by email
+}
+
+// TRANSACTION MODEL: Stores financial transactions
+model Transaction {
+  id             String    @id @default(cuid())  // Unique ID for each transaction
+  userId         String                          // Which user owns this transaction
+  organizationId String                          // Which organization (for data isolation)
+  date           DateTime                        // When the transaction occurred
+  description    String                          // What the transaction was for
+  amount         Float                           // How much money was involved
+  balanceAfter   Float?                          // Balance after this transaction (optional)
+  category       String?                         // Category like "Food", "Transport" etc.
+  confidence     Float     @default(1.0)         // How confident our parser was (0.0 to 1.0)
+  rawText        String?                         // Original bank statement text
+  createdAt      DateTime  @default(now())       // When we saved this transaction
+  
+  // RELATION: Each transaction belongs to one user
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // INDEXES: For fast queries
+  @@index([userId])          // Quick: "Find all transactions for user X"
+  @@index([organizationId])  // Quick: "Find all transactions in organization Y"
+  @@index([date])            // Quick: "Find transactions between dates"
+  @@index([category])        // Quick: "Find all food transactions"
 }
