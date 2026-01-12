@@ -1,28 +1,10 @@
-node_modules
-# Keep environment variables out of version control
-.env
-
-./backend/package.json
-./backend/package-lock.json
-./backend/yarn.lock
-./backend/pnpm-lock.yaml
-./backend/.env
-./backend/dist
-./backend/tsconfig.json
-
-/src/generated/prisma
-
+# ==================== ROOT LEVEL ====================
 # Dependencies
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-
-# Build outputs
-dist/
-build/
-*.tsbuildinfo
 
 # Environment variables
 .env
@@ -31,28 +13,10 @@ build/
 .env.test.local
 .env.production.local
 
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
-# Prisma
-prisma/migrations/dev.db
-prisma/*.db
-
-# Logs
-*.log
-logs/
-
-# Runtime data
-pids
-*.pid
-*.seed
-*.pid.lock
-
-# Coverage directory used by tools like istanbul
-coverage/
-*.lcov
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
 
 # IDE/Editor
 .vscode/
@@ -70,10 +34,38 @@ coverage/
 ehthumbs.db
 Thumbs.db
 
+# Logs
+*.log
+logs/
+
 # Temporary files
 tmp/
 temp/
 
-# Test files
-jest.config.js
-jest.setup.js
+# Test coverage
+coverage/
+*.lcov
+
+# ==================== BACKEND SPECIFIC ====================
+# Prisma generated client
+/src/generated/prisma/
+/prisma/migrations/dev.db
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# ==================== FRONTEND (Future) ====================
+# Next.js
+.next/
+out/
+
+# Production
+*.prod.*
