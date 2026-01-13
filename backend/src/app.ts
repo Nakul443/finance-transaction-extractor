@@ -6,8 +6,9 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors' // CORS middleware, allows web apps from other domains to access our API
 import { authRoutes } from './routes/auth' // authentication routes
 import { authMiddleware } from './middleware/auth'
+import { transactionRoutes } from './routes/transactions'
 
-type AppContext = {
+export type AppContext = {
   Variables: {
     user: any
   }
@@ -40,6 +41,11 @@ app.get('/health', (c) => {
 
 // auth routes
 app.route('/api/auth', authRoutes)
+
+app.use('/api/transactions/*', authMiddleware) // protect all /transactions routes with auth
+// this line is optional and can be removed if already protected in the transactions route file inside each API
+
+app.route('/api/transactions', transactionRoutes)
 
 // middleware
 app.get('/api/protected', authMiddleware, (c) => {
