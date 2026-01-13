@@ -5,6 +5,8 @@
 // also adds authentication token to every request if it exists
 // simplifies sending requests to the backend from other parts of the frontend code
 
+// Frontend → api.ts → Backend (localhost:3001)
+
 import axios from 'axios'
 // axios is a tool for sending HTTP from a website to a server
 
