@@ -1,5 +1,5 @@
 // It talks to the database to save/retrieve transactions, ensuring each user only sees their own data
-// It also uses an extractor to parse raw transaction text into structured data
+// Uses an extractor to parse raw transaction text into structured data
 
 import { Hono } from 'hono'
 import { z } from 'zod'
@@ -63,6 +63,66 @@ app.post('/extract', async (c) => {
             return c.json({ error: 'Validation error', details: error.issues }, 400)
         }
         return c.json({ error: 'Internal server error' }, 500)
+    }
+})
+
+// get api with cursor pagination
+app.get('/', async (c) => {
+    try {
+        // 'c' is the context, which holds request and response info
+        // get user from context
+        const user = c.get('user') as any
+        
+        // Get query parameters
+        const limit = parseInt(c.req.query('limit') || '10')
+        const cursor = c.req.query('cursor')
+        
+        // Build query with data isolation
+        // the database will only return transactions if it belongs to that user and their organization
+        // multi-tenancy
+        const where = {
+            userId: user.id,
+            organizationId: user.organizationId
+        }
+
+        // Fetch transactions
+        const transactions = await prisma.transaction.findMany({
+            where, // only fetch transactions for this user and their organization, data isolation
+            take: limit + 1, // Get one extra to check if there are more, simple checking
+            cursor: cursor ? { id: cursor } : undefined,
+            orderBy: { date: 'desc' },
+            select: {
+                id: true,
+                date: true,
+                description: true,
+                amount: true,
+                category: true,
+                confidence: true,
+                balanceAfter: true,
+                createdAt: true
+            }
+        })
+
+        // Check if there are more transactions
+        const hasMore = transactions.length > limit // tells frontend where to show "load more" button
+        const items = hasMore ? transactions.slice(0, -1) : transactions // remove extra item if exists
+        const nextCursor = hasMore ? items[items.length - 1]?.id : null
+        // take ID of last item in our list, frontend will send this ID back when user clicks "load more"
+
+        // response
+        return c.json({
+            transactions: items,
+            pagination: {
+                limit,
+                hasMore,
+                nextCursor,
+                total: await prisma.transaction.count({ where })
+            }
+        })
+
+    } catch (error) {
+        console.error('Error fetching transactions:', error)
+        return c.json({ error: 'Failed to fetch transactions' }, 500)
     }
 })
 
