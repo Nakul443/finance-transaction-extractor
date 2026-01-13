@@ -48,7 +48,7 @@ app.post('/extract', async (c) => {
         })
 
         // return saved transaction
-        return c.json({ 
+        return c.json({
             message: 'Transaction saved successfully',
             transaction,
             extractionDetails: {
@@ -72,11 +72,11 @@ app.get('/', async (c) => {
         // 'c' is the context, which holds request and response info
         // get user from context
         const user = c.get('user') as any
-        
+
         // Get query parameters
         const limit = parseInt(c.req.query('limit') || '10')
         const cursor = c.req.query('cursor')
-        
+
         // Build query with data isolation
         // the database will only return transactions if it belongs to that user and their organization
         // multi-tenancy

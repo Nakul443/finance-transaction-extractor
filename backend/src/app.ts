@@ -9,9 +9,9 @@ import { authMiddleware } from './middleware/auth'
 import { transactionRoutes } from './routes/transactions'
 
 export type AppContext = {
-  Variables: {
-    user: any
-  }
+    Variables: {
+        user: any
+    }
 }
 
 const app = new Hono<AppContext>()

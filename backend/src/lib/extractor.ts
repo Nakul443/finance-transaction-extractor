@@ -14,7 +14,7 @@ export interface ExtractedTransaction {
 // this function is a type of ExtractedTransaction
 export function extractTransaction(text: string): ExtractedTransaction {
   const rawText = text.trim()
-  
+
   // default values
   let date = new Date() // date is a Date object
   let description = 'Transaction'
@@ -29,7 +29,7 @@ export function extractTransaction(text: string): ExtractedTransaction {
     try {
       date = new Date(dateMatch[0])
       if (!isNaN(date.getTime())) confidence += 0.1
-    } catch {}
+    } catch { }
   }
 
   // Simple amount extraction
@@ -47,12 +47,12 @@ export function extractTransaction(text: string): ExtractedTransaction {
   }
 
   // Simple description
-  const lines = rawText.split('\n').filter(line => 
-    line.trim().length > 0 && 
+  const lines = rawText.split('\n').filter(line =>
+    line.trim().length > 0 &&
     !line.match(/Date:|Amount:|Balance:/i) &&
     !line.match(/\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/)
   )
-  
+
   if (lines.length > 0) {
     description = lines[0].substring(0, 100).trim()
     confidence += 0.1

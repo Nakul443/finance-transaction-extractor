@@ -30,72 +30,72 @@ const loginSchema = z.object({
 
 // registration endpoint
 app.post('/register', async (c) => {
-    try {
-        // GET JSON from request
-        const body = await c.req.json()
+  try {
+    // GET JSON from request
+    const body = await c.req.json()
 
-        // validate data
-        const { email, password, name } = registerSchema.parse(body)
+    // validate data
+    const { email, password, name } = registerSchema.parse(body)
 
-        // check if user with email already exists
-        const existingUser = await prisma.user.findUnique({
-            where: { email }
-        })
+    // check if user with email already exists
+    const existingUser = await prisma.user.findUnique({
+      where: { email }
+    })
 
-        if (existingUser) {
-            return c.json({ error: 'User already exists' }, 400)
-        }
-
-        // hash password before saving
-        const hashedPassword = await hash(password, 10)
-
-        // Create organization ID
-        // for data isolation, unique ID for each user
-        // multi-tenancy
-        // the server will show data to a user based on their organizationId
-        // and other data would be hidden to that particular user
-        const organizationId = `org_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-
-        // Create user in database
-        const user = await prisma.user.create({
-        data: {
-            email,
-            password: hashedPassword,
-            name: name || email.split('@')[0],
-            organizationId
-        },
-        select: {
-            id: true,
-            email: true,
-            name: true,
-            organizationId: true,
-            createdAt: true
-        }
-        })
-
-        // Create JWT token
-        // userID, email and organizationId are packaged inside the token
-        const token = await new SignJWT({
-        userId: user.id,
-        email: user.email,
-        organizationId: user.organizationId
-        })
-        .setProtectedHeader({ alg: 'HS256' })
-        .setIssuedAt()
-        .setExpirationTime('7d')
-        .sign(JWT_SECRET)
-
-        // Return success
-        return c.json({
-        message: 'User registered',
-        user,
-        token
-        }, 201)
-        
-    } catch (error) {
-        console.error('Registration error:', error)
-        return c.json({ error: 'Registration failed' }, 500)
+    if (existingUser) {
+      return c.json({ error: 'User already exists' }, 400)
     }
+
+    // hash password before saving
+    const hashedPassword = await hash(password, 10)
+
+    // Create organization ID
+    // for data isolation, unique ID for each user
+    // multi-tenancy
+    // the server will show data to a user based on their organizationId
+    // and other data would be hidden to that particular user
+    const organizationId = `org_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
+    // Create user in database
+    const user = await prisma.user.create({
+      data: {
+        email,
+        password: hashedPassword,
+        name: name || email.split('@')[0],
+        organizationId
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        organizationId: true,
+        createdAt: true
+      }
+    })
+
+    // Create JWT token
+    // userID, email and organizationId are packaged inside the token
+    const token = await new SignJWT({
+      userId: user.id,
+      email: user.email,
+      organizationId: user.organizationId
+    })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('7d')
+      .sign(JWT_SECRET)
+
+    // Return success
+    return c.json({
+      message: 'User registered',
+      user,
+      token
+    }, 201)
+
+  } catch (error) {
+    console.error('Registration error:', error)
+    return c.json({ error: 'Registration failed' }, 500)
+  }
 })
 
 // login endpoint
