@@ -1,4 +1,5 @@
 // It talks to the database to save/retrieve transactions, ensuring each user only sees their own data
+// It also uses an extractor to parse raw transaction text into structured data
 
 import { Hono } from 'hono'
 import { z } from 'zod'
