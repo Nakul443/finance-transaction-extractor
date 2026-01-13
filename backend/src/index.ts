@@ -3,7 +3,7 @@
 // imports function that creates an HTTP server from Hono
 import { serve } from '@hono/node-server'
 // serve is used to create and start the server
-// it serves as a bridge between Hono app and Node.js HTTP server
+// it acts as a bridge between Hono app and Node.js HTTP server
 
 // import routes,logic,etc from app.ts
 import app from './app'

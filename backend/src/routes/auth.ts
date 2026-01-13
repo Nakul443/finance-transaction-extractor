@@ -28,7 +28,7 @@ const loginSchema = z.object({
 })
 
 
-// register endpoint
+// registration endpoint
 app.post('/register', async (c) => {
     try {
         // GET JSON from request
@@ -132,3 +132,5 @@ app.post('/login', async (c) => {
     return c.json({ error: 'Login failed' }, 500)
   }
 })
+
+export { app as authRoutes }
