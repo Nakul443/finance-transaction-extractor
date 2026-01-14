@@ -14,6 +14,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 // sets address of backend server, either from environment variable or default to localhost
 
 // create an axios instance with the base URL and default headers
+// adds 'Content-Type: application/json' header to every request
 const api = axios.create({
     baseURL: API_URL,
     headers: {
@@ -24,20 +25,40 @@ const api = axios.create({
 // Add token to requests
 // basially a hook that catches every outgoing request and adds the token to the headers
 api.interceptors.request.use((config) => {
-    if (typeof window !== 'undefined') {
-        // check if code is running in a browser
+    // if (typeof window !== 'undefined') {
+    //     // check if code is running in a browser
 
-        const token = localStorage.getItem('token') // get token from local storage
+    //     const token = localStorage.getItem('token') // get token from local storage
 
-        if (token) {
-            // if token exists, add it to the request headers
-            // put word 'Bearer ' in the front of the token
-            config.headers.Authorization = `Bearer ${token}`
-        }
-    }
+    //     if (token) {
+    //         // if token exists, add it to the request headers
+    //         // put word 'Bearer ' in the front of the token
+    //         config.headers.Authorization = `Bearer ${token}`
+    //     }
+    // }
 
     return config
 })
+
+// a rule for when a message comes back from the server
+// if the message is successful, let it through
+// if error move on
+api.interceptors.response.use(
+    (response) => response, // just return the response if it's successful
+    (error) => {
+        // if response has an error
+        if (error.response?.status === 401) {
+            // 401 means token expired or invalid
+            // Unauthorized - redirect to login
+            if (typeof window !== 'undefined') {
+                window.location.href = '/login'
+            }
+        }
+
+        return Promise.reject(error)
+    }
+)
+
 
 // object authAPI
 // the function inside takes data and sends it to the backend API using axios instance created above
