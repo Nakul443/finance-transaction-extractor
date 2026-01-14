@@ -5,7 +5,7 @@
 // The backend hashes the password and generates a unique organizationId
 // This file receives that organizationId inside the token and saves it
 
-// flow : Register → Backend creates user → Auto-login via NextAuth → Dashboard
+// flow : Register → Backend creates user → Auto-login via Better Auth → Dashboard
 
 
 'use client' // tells next.js that this page is interactive
@@ -16,11 +16,10 @@
 
 import { useState } from 'react' // react's memory
 import { useRouter } from 'next/navigation' // allows page changes
-import { signIn } from 'next-auth/react' // NextAuth function to auto-login after registration
 import { Button } from '@/components/ui/button' // import button component
 import { Input } from '@/components/ui/input' // import input component
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card' // import card components
-import { authAPI } from '@/lib/api' // import authAPI from api.ts
+import { authClient } from '@/lib/auth/client' // import Better Auth client
 import { toast } from 'sonner' // for showing success/error messages
 
 
@@ -31,36 +30,43 @@ export default function RegisterPage() {
     const [password, setPassword] = useState('') // store user's password
     const [name, setName] = useState('') // store user's name
     const [loading, setLoading] = useState(false) // loading state for button
-    const [error, setError] = useState('') // error message state
 
     // function that runs when the user submits the form
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault() // Stop the browser from refreshing the page
         setLoading(true)   // Turn the "Loading" switch to ON
-        setError('')       // Wipe out any old error messages
 
         try {
-            // API call to register endpoint with email, password and name
-            // sends email, password and name to hono backend
+            // Use Better Auth client for registration
+            // sends email, password and name to hono backend via Better Auth
             // backend creates the user and returns a token
-            const response = await authAPI.register({ email, password, name })
-
-            toast.success('Registration successful, account created successfully!', { description: 'You can now log in' })
-
-            const loginResult = await signIn('credentials', {
+            const result = await authClient.signUp.email({
                 email,
                 password,
-                redirect: false, // don't redirect automatically
+                name
             })
 
-            if (loginResult?.error) {
-                // If auto-login fails, redirect to login page
-                toast.info('Account created. Please login manually.')
-                router.push('/login') // redirect to login page
+            if (result?.error) {
+                toast.error('Registration failed', {
+                    description: result.error.message || 'Please try again'
+                })
             } else {
-                // Success! Redirect to dashboard
-                router.push('/dashboard')
-                router.refresh() // Refresh server components
+                toast.success('Account created successfully!')
+                
+                // Auto-login after registration using Better Auth
+                const loginResult = await authClient.signIn.email({
+                    email,
+                    password
+                })
+                
+                if (loginResult?.error) {
+                    // If auto-login fails, redirect to login page
+                    toast.info('Account created. Please login manually.')
+                    router.push('/login') // redirect to login page
+                } else {
+                    // Success! Redirect to dashboard
+                    router.push('/dashboard')
+                }
             }
 
         } catch (err: any) {
@@ -109,10 +115,6 @@ export default function RegisterPage() {
                                 minLength={6}
                             />
                         </div>
-
-                        {error && (
-                            <div className="text-red-500 text-sm">{error}</div>
-                        )}
 
                         <Button type="submit" className="w-full" disabled={loading}>
                             {loading ? 'Creating account...' : 'Register'}

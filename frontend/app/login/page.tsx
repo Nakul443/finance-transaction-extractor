@@ -1,18 +1,17 @@
 // creates a login form for the user to enter email and password
 // which is sent to the backend, saves JWT token and redirects to dashboard on success
 // flow : User → Type email/password → Click Login → API call to backend → Save token → Go to dashboard
-// flow is now NextAuth -> config.ts -> authAPI -> backend
+// flow is now Better Auth -> authClient -> backend
 
 
 'use client' // tells next.js that this page is interactive
 
 import { useState } from 'react' // way of remembering things in a component
 import { useRouter } from 'next/navigation' // allows to change pages (eg : login -> dashboard)
-import { signIn } from 'next-auth/react' // NextAuth function to handle login
 import { Button } from '@/components/ui/button' // import button component
 import { Input } from '@/components/ui/input' // import input component
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card' // import card components
-import { authAPI } from '@/lib/api' // import authAPI from api.ts
+import { authClient } from '@/lib/auth/client' // import Better Auth client
 import { toast } from 'sonner' // for showing success/error messages
 
 // main function for the login page
@@ -21,25 +20,19 @@ export default function LoginPage() {
     const [email, setEmail] = useState('') // store what the user is typing 
     const [password, setPassword] = useState('') // store what the user is typing
     const [loading, setLoading] = useState(false) // loading state for button
-    const [error, setError] = useState('') // error message state
 
     // function that runs when the user submits the form
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault() // Prevents the whole page from refreshing
         setLoading(true)   // Shows "Logging in..." on the button
-        setError('')       // Clears old errors
 
         try {
-            // use NextAuth signIn to handle authentication
-            // this will call authorize() function in lib/auth/config.ts
-            // which will call the backend API to verify credentials
-            // API call to login endpoint with email and password
-
-            // store the result of signIn function
-            const result = await signIn('credentials', {
+            // Use Better Auth client to handle authentication
+            // This will call the backend /api/auth/login endpoint directly
+            // Better Auth stores the token automatically for future requests
+            const result = await authClient.signIn.email({
                 email,
-                password,
-                redurect: false, // don't redirect automatically
+                password
             })
 
             if (result?.error) {
@@ -48,12 +41,11 @@ export default function LoginPage() {
             else {
                 toast.success('Login successful', { description: 'Welcome back!' })
                 router.push('/dashboard') // go to dashboard on success
-                router.refresh() // refresh server components to get new session
             }
         }
 
         catch (err: any) {
-            toast.error('something went wrong')
+            toast.error('Something went wrong')
             console.error('Login error:', err)
         } finally {
             // meaning this block always runs at the end no matter what
@@ -88,10 +80,6 @@ export default function LoginPage() {
                                 required
                             />
                         </div>
-
-                        {error && (
-                            <div className="text-red-500 text-sm">{error}</div>
-                        )}
 
                         <Button type="submit" className="w-full" disabled={loading}>
                             {loading ? 'Logging in...' : 'Login'}
