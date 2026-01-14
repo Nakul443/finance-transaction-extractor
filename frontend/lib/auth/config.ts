@@ -13,25 +13,29 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { authAPI } from "@/lib/api";
 
 declare module "next-auth" {
-    // define custom properties for user, session, and JWT
-    // these properties will be available throughout the app
-    interface User {
-        organizationId?: string;
-        token?: string;
-    }
+    // define custom properties in session object
     interface Session {
+        token: string;
+        // define custom properties in user object inside session
         user: {
-            id?: string;
-            organizationId?: string;
+            id: string;
+            organizationId: string;
         } & DefaultSession["user"];
     }
-    interface JWT {
-        id?: string;
-        organizationId?: string;
-        token?: string;
+
+    interface User {
+        token: string;
+        organizationId: string;
     }
 }
 
+declare module "next-auth/jwt" {
+    // define custom properties in JWT token
+    interface JWT {
+        token: string;
+        organizationId: string;
+    }
+}
 const authOptions: NextAuthOptions = {
     // defines how user will log in
     providers: [

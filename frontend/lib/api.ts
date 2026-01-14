@@ -24,18 +24,21 @@ const api = axios.create({
 
 // Add token to requests
 // basially a hook that catches every outgoing request and adds the token to the headers
-api.interceptors.request.use((config) => {
-    // if (typeof window !== 'undefined') {
-    //     // check if code is running in a browser
-
-    //     const token = localStorage.getItem('token') // get token from local storage
-
-    //     if (token) {
-    //         // if token exists, add it to the request headers
-    //         // put word 'Bearer ' in the front of the token
-    //         config.headers.Authorization = `Bearer ${token}`
-    //     }
-    // }
+api.interceptors.request.use(async (config) => {
+    if (typeof window !== 'undefined') {
+        // check if code is running in a browser
+        
+        // We need to get the session token from NextAuth
+        // Since we're in a client component, we'll use a dynamic import
+        const { getSession } = await import('next-auth/react')
+        const session = await getSession()
+        
+        if (session?.token) {
+            // if token exists in NextAuth session, add it to the request headers
+            // put word 'Bearer ' in the front of the token
+            config.headers.Authorization = `Bearer ${session.token}`
+        }
+    }
 
     return config
 })

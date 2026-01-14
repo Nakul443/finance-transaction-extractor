@@ -56,7 +56,7 @@ export default function RegisterPage() {
             if (loginResult?.error) {
                 // If auto-login fails, redirect to login page
                 toast.info('Account created. Please login manually.')
-                router.push('/login')
+                router.push('/login') // redirect to login page
             } else {
                 // Success! Redirect to dashboard
                 router.push('/dashboard')
