@@ -35,6 +35,7 @@ export default function LoginPage() {
             // which will call the backend API to verify credentials
             // API call to login endpoint with email and password
 
+            // store the result of signIn function
             const result = await signIn('credentials', {
                 email,
                 password,
@@ -46,7 +47,7 @@ export default function LoginPage() {
             }
             else {
                 toast.success('Login successful', { description: 'Welcome back!' })
-                router.push('/dashboard')
+                router.push('/dashboard') // go to dashboard on success
                 router.refresh() // refresh server components to get new session
             }
         }

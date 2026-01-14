@@ -1,9 +1,11 @@
 // User → Enter name/email/password → Click Register →
 // api.ts sends to backend → Backend creates user → Returns token → Save token → Redirect to dashboard
 // This file sends the data
-// The auth.ts backend file (which we discussed earlier) receives it
+// The auth.ts backend file receives it
 // The backend hashes the password and generates a unique organizationId
 // This file receives that organizationId inside the token and saves it
+
+// flow : Register → Backend creates user → Auto-login via NextAuth → Dashboard
 
 
 'use client' // tells next.js that this page is interactive
@@ -14,10 +16,12 @@
 
 import { useState } from 'react' // react's memory
 import { useRouter } from 'next/navigation' // allows page changes
+import { signIn } from 'next-auth/react' // NextAuth function to auto-login after registration
 import { Button } from '@/components/ui/button' // import button component
 import { Input } from '@/components/ui/input' // import input component
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card' // import card components
 import { authAPI } from '@/lib/api' // import authAPI from api.ts
+import { toast } from 'sonner' // for showing success/error messages
 
 
 // function for registration page
@@ -40,16 +44,30 @@ export default function RegisterPage() {
             // sends email, password and name to hono backend
             // backend creates the user and returns a token
             const response = await authAPI.register({ email, password, name })
-            const { token, user } = response.data
 
-            // Save token to localStorage
-            localStorage.setItem('token', token) // saves the token in the browser's permanent memory
-            localStorage.setItem('user', JSON.stringify(user)) // saves user info as a string
+            toast.success('Registration successful, account created successfully!', { description: 'You can now log in' })
 
-            // Redirect to dashboard
-            router.push('/dashboard')
+            const loginResult = await signIn('credentials', {
+                email,
+                password,
+                redirect: false, // don't redirect automatically
+            })
+
+            if (loginResult?.error) {
+                // If auto-login fails, redirect to login page
+                toast.info('Account created. Please login manually.')
+                router.push('/login')
+            } else {
+                // Success! Redirect to dashboard
+                router.push('/dashboard')
+                router.refresh() // Refresh server components
+            }
+
         } catch (err: any) {
-            setError(err.response?.data?.error || 'Registration failed')
+            // Show error message from backend or generic error
+            const errorMessage = err.response?.data?.error || 'Registration failed'
+            toast.error(errorMessage)
+            console.error('Registration error:', err)
         } finally {
             setLoading(false)
         }
