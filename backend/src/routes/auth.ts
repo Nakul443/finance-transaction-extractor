@@ -3,7 +3,7 @@
 import { Hono } from 'hono' // Web framework
 import { z } from 'zod' // Data validation
 import { compare, hash } from 'bcryptjs' // Password encryption, hash MD5 can also be used
-import { SignJWT } from 'jose' // JWT token creation
+import { jwtVerify, SignJWT } from 'jose' // JWT token creation
 import { prisma } from '../lib/db' // Database client
 
 // Create router
@@ -132,5 +132,69 @@ app.post('/login', async (c) => {
     return c.json({ error: 'Login failed' }, 500)
   }
 })
+
+// Logout endpoint for Better Auth compatibility
+app.post('/logout', async (c) => {
+  try {
+    // In JWT-based auth, logout is handled client-side
+    // This endpoint exists for Better Auth to call
+    return c.json({ 
+      success: true, 
+      message: 'Logged out successfully' 
+    });
+  } catch (error) {
+    console.error('Logout error:', error);
+    return c.json({ error: 'Logout failed' }, 500);
+  }
+});
+
+// Session endpoint for Better Auth getSession()
+app.get('/session', async (c) => {
+  try {
+    const authHeader = c.req.header('Authorization');
+    
+    // If no auth header, return no session
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return c.json({ user: null }, 200);
+    }
+    
+    // Extract and verify token
+    const token = authHeader.substring(7);
+    
+    try {
+      const { payload } = await jwtVerify(token, JWT_SECRET);
+      
+      // Get user from database
+      const user = await prisma.user.findUnique({
+        where: { id: payload.userId as string },
+        select: { 
+          id: true, 
+          email: true, 
+          name: true, 
+          organizationId: true,
+          createdAt: true 
+        }
+      });
+      
+      if (!user) {
+        return c.json({ user: null }, 200);
+      }
+      
+      // Return user and token (Better Auth expects this structure)
+      return c.json({
+        user,
+        token // Return the same token for Better Auth
+      });
+      
+    } catch (jwtError) {
+      // Token is invalid or expired
+      return c.json({ user: null }, 200);
+    }
+    
+  } catch (error) {
+    console.error('Session error:', error);
+    return c.json({ user: null }, 200);
+  }
+});
 
 export { app as authRoutes }
