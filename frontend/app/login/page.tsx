@@ -1,15 +1,19 @@
 // creates a login form for the user to enter email and password
 // which is sent to the backend, saves JWT token and redirects to dashboard on success
 // flow : User → Type email/password → Click Login → API call to backend → Save token → Go to dashboard
+// flow is now NextAuth -> config.ts -> authAPI -> backend
+
 
 'use client' // tells next.js that this page is interactive
 
 import { useState } from 'react' // way of remembering things in a component
 import { useRouter } from 'next/navigation' // allows to change pages (eg : login -> dashboard)
+import { signIn } from 'next-auth/react' // NextAuth function to handle login
 import { Button } from '@/components/ui/button' // import button component
 import { Input } from '@/components/ui/input' // import input component
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card' // import card components
 import { authAPI } from '@/lib/api' // import authAPI from api.ts
+import { toast } from 'sonner' // for showing success/error messages
 
 // main function for the login page
 export default function LoginPage() {
@@ -26,23 +30,33 @@ export default function LoginPage() {
         setError('')       // Clears old errors
 
         try {
+            // use NextAuth signIn to handle authentication
+            // this will call authorize() function in lib/auth/config.ts
+            // which will call the backend API to verify credentials
             // API call to login endpoint with email and password
-            // sends email and password to hono backend
-            const response = await authAPI.login({ email, password })
-            const { token, user } = response.data
 
-            // Save token to localStorage
-            // saves the token in the browser's permanent memory
-            // important for interceptor in api.ts to add token to every request
-            localStorage.setItem('token', token)
-            localStorage.setItem('user', JSON.stringify(user))
+            const result = await signIn('credentials', {
+                email,
+                password,
+                redurect: false, // don't redirect automatically
+            })
 
-            // Redirect to dashboard after sucessful login of the user
-            router.push('/dashboard')
-        } catch (err: any) {
-            setError(err.response?.data?.error || 'Login failed')
+            if (result?.error) {
+                toast.error('Login failed', { description: 'Invalid email or password' })
+            }
+            else {
+                toast.success('Login successful', { description: 'Welcome back!' })
+                router.push('/dashboard')
+                router.refresh() // refresh server components to get new session
+            }
+        }
+
+        catch (err: any) {
+            toast.error('something went wrong')
+            console.error('Login error:', err)
         } finally {
-            setLoading(false)
+            // meaning this block always runs at the end no matter what
+            setLoading(false) // reset loading state
         }
     }
 
