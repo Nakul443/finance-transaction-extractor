@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "../components/auth-provider"; // [1] IMPORT UNCOMMENTED
 import { Toaster } from "sonner";
+import { Providers } from "@/components/Providers"
 
 const fontClass = "font-sans";
 
@@ -13,18 +14,17 @@ export const metadata: Metadata = {
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: {
+  children: React.ReactNode
+}) {
   return (
     <html lang="en">
-      <body className={fontClass}>
-        {/* [2] WRAPPER UNCOMMENTED - This powers all auth hooks like useSession() */}
-        <AuthProvider>
+      <body>
+        <Providers>
           {children}
-          <Toaster position="top-right" />
-        </AuthProvider>
+          <Toaster />
+        </Providers>
       </body>
     </html>
-  );
+  )
 }

@@ -14,6 +14,7 @@
 - [Features](#-features)
 - [Tech Stack](#-tech-stack)
 - [Architecture & Data Isolation](#-architecture--data-isolation)
+- [Authentication & Frontend Setup](#-authentication--frontend-setup)
 - [API Documentation](#-api-documentation)
 - [Setup Instructions](#-setup-instructions)
 - [Environment Variables](#-environment-variables)
@@ -55,9 +56,11 @@ Vessify is a production-ready financial transaction extraction system designed f
 ### Frontend
 - **Framework**: Next.js 14 (App Router)
 - **Language**: TypeScript
+- **Authentication**: Auth.js (NextAuth.js) with Credentials provider
 - **Styling**: Tailwind CSS 4
 - **UI Components**: shadcn/ui, Radix UI
-- **State Management**: React Hooks
+- **Form Management**: react-hook-form with zod validation
+- **State Management**: React Hooks, Auth.js Session
 - **HTTP Client**: Axios with interceptors
 - **Notifications**: Sonner (toast notifications)
 - **Icons**: Lucide React
@@ -115,6 +118,308 @@ const transactions = await prisma.transaction.findMany({ where })
 2. **Request Context**: User info (`id`, `email`, `organizationId`) attached to request context
 3. **Database Indexes**: Optimized queries with indexes on `organizationId` and `userId`
 4. **Cascade Deletion**: Transactions are deleted when user is removed (Prisma `onDelete: Cascade`)
+
+---
+
+## 🔐 Authentication & Frontend Setup
+
+Vessify uses **Auth.js (NextAuth.js)** for frontend authentication, providing a seamless integration between the Next.js frontend and the Hono backend JWT system.
+
+### Auth.js Configuration
+
+#### 1. Auth.js Setup (`frontend/auth.ts`)
+
+The Auth.js configuration uses the Credentials provider to authenticate against the Hono backend:
+
+```typescript
+import NextAuth from "next-auth"
+import Credentials from "next-auth/providers/credentials"
+
+export const { handlers, signIn, signOut, auth } = NextAuth({
+  providers: [
+    Credentials({
+      name: "Credentials",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" }
+      },
+      async authorize(credentials) {
+        // Calls Hono backend /api/auth/login endpoint
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/login`, {
+          method: 'POST',
+          body: JSON.stringify(credentials),
+          headers: { "Content-Type": "application/json" }
+        })
+
+        const data = await res.json()
+
+        if (res.ok && data.user) {
+          return {
+            ...data.user,
+            accessToken: data.token // JWT from Hono backend
+          }
+        }
+        return null
+      }
+    })
+  ],
+  callbacks: {
+    // Syncs Hono JWT with Auth.js session
+    async jwt({ token, user }) {
+      if (user) {
+        token.accessToken = (user as any).accessToken
+        token.organizationId = (user as any).organizationId
+      }
+      return token
+    },
+    async session({ session, token }) {
+      (session as any).accessToken = token.accessToken;
+      (session as any).organizationId = token.organizationId;
+      return session
+    }
+  }
+})
+```
+
+**Key Features:**
+- **Credentials Provider**: Authenticates against Hono backend `/api/auth/login`
+- **JWT Callback**: Stores `accessToken` and `organizationId` in the JWT token
+- **Session Callback**: Exposes `accessToken` and `organizationId` in the session object
+
+#### 2. Auth API Route (`frontend/app/api/auth/[...nextauth]/route.ts`)
+
+The Next.js API route exports GET and POST handlers for Auth.js:
+
+```typescript
+import { handlers } from "@/auth"
+export const { GET, POST } = handlers
+```
+
+This creates the `/api/auth/*` endpoints that Auth.js uses for authentication flows.
+
+#### 3. Application Providers (`frontend/components/Providers.tsx`)
+
+A client component that wraps the app with `SessionProvider`:
+
+```typescript
+'use client'
+
+import { SessionProvider } from "next-auth/react"
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  return (
+    <SessionProvider>
+      {children}
+    </SessionProvider>
+  )
+}
+```
+
+**Usage in `app/layout.tsx`:**
+```typescript
+import { Providers } from "@/components/Providers"
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <Providers>
+          {children}
+          <Toaster />
+        </Providers>
+      </body>
+    </html>
+  )
+}
+```
+
+This enables `useSession()` hook throughout the application.
+
+#### 4. Middleware Protection (`frontend/app/middleware.ts`)
+
+Protects routes at the edge, redirecting unauthenticated users:
+
+```typescript
+import { auth } from "@/auth"
+import { NextResponse } from "next/server"
+
+export default auth((req: { auth: any; nextUrl?: URL }) => {
+  const isLoggedIn = !!req.auth
+  const nextUrl = req.nextUrl
+
+  if (!nextUrl) {
+    return NextResponse.next()
+  }
+
+  const isOnDashboard = nextUrl.pathname.startsWith("/dashboard")
+
+  if (isOnDashboard && !isLoggedIn) {
+    return NextResponse.redirect(new URL("/login", nextUrl))
+  }
+
+  return NextResponse.next()
+})
+
+export const config = {
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+}
+```
+
+**Protected Routes:**
+- `/dashboard` - Requires authentication
+- Root `/` - Redirects to dashboard (which requires auth)
+
+**Public Routes:**
+- `/login` - Public access
+- `/register` - Public access
+- `/api/*` - API routes excluded from middleware
+
+### Frontend Implementation Details
+
+#### 5. Shadcn UI Components
+
+Install required components via Shadcn CLI:
+
+```bash
+cd frontend
+npx shadcn@latest add table
+npx shadcn@latest add form
+npx shadcn@latest add input
+npx shadcn@latest add textarea
+npx shadcn@latest add label
+npx shadcn@latest add card
+```
+
+These components provide the modern UI for forms, tables, and inputs.
+
+#### 6. Login & Register Pages
+
+Both pages use `react-hook-form` and `zod` for validation, replacing manual `fetch` calls:
+
+**Login Page (`app/login/page.tsx`):**
+- Uses `react-hook-form` with `zod` resolver
+- Calls `signIn()` from Auth.js instead of direct API calls
+- Automatic redirect to `/dashboard` on success
+
+**Register Page (`app/register/page.tsx`):**
+- Form validation via `zod` schema
+- Calls backend `/api/auth/register` endpoint
+- Auto-login after registration using `signIn()`
+
+#### 7. Dashboard Implementation (`app/dashboard/page.tsx`)
+
+The dashboard uses Auth.js session management:
+
+```typescript
+import { useSession } from "next-auth/react"
+
+export default function DashboardPage() {
+  const { data: session } = useSession()
+  const user = session?.user
+
+  // No localStorage needed - session is managed by Auth.js
+  // Transaction list uses Shadcn Table component
+  // Pagination with "Load More" button
+  // Delete functionality with state updates
+}
+```
+
+**Key Features:**
+- **Session Management**: Uses `useSession()` hook instead of `localStorage`
+- **Transaction Table**: Rendered with Shadcn `Table` component
+- **Pagination**: Cursor-based pagination with "Load More" button
+- **Delete Handler**: Calls `transactionAPI.delete()` and updates local state
+
+#### 8. API Interceptor Sync (`lib/api.ts`)
+
+The Axios interceptor automatically injects the JWT token from Auth.js session:
+
+```typescript
+import { getSession, signOut } from "next-auth/react"
+
+api.interceptors.request.use(async (config) => {
+  const session = await getSession()
+  const token = (session as any)?.accessToken
+
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+
+  return config
+})
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response?.status === 401) {
+      // Token expired - sign out and redirect
+      await signOut({ callbackUrl: '/login' })
+    }
+    return Promise.reject(error)
+  }
+)
+```
+
+**Benefits:**
+- Automatic token injection from Auth.js session
+- No manual `localStorage` token management
+- Automatic logout on 401 errors
+
+#### 9. Data Isolation Verification
+
+The backend automatically extracts `organizationId` from the validated JWT:
+
+1. **Frontend**: `accessToken` (JWT) sent in `Authorization: Bearer <token>` header
+2. **Backend Middleware**: `authMiddleware` verifies JWT and extracts `organizationId`
+3. **Query Scoping**: All database queries filter by `organizationId` from JWT payload
+
+**Example Flow:**
+```typescript
+// Frontend: Dashboard calls transactionAPI.list()
+// → Axios interceptor adds: Authorization: Bearer <jwt_token>
+
+// Backend: authMiddleware verifies JWT
+const { payload } = await jwtVerify(token, JWT_SECRET)
+// payload contains: { userId, email, organizationId }
+
+// Backend: Transaction route scopes query
+const where = {
+  userId: user.id,
+  organizationId: user.organizationId  // From JWT payload
+}
+```
+
+#### 10. Pagination & Deletion
+
+**Pagination Implementation:**
+```typescript
+const [pagination, setPagination] = useState({
+  hasMore: false,
+  nextCursor: null as string | null,
+  total: 0
+})
+
+const loadMore = async () => {
+  if (!pagination.nextCursor) return
+  
+  const response = await transactionAPI.list(10, pagination.nextCursor)
+  setTransactions([...transactions, ...response.data.transactions])
+  setPagination(response.data.pagination)
+}
+```
+
+**Delete Handler:**
+```typescript
+const handleDelete = async (id: string) => {
+  try {
+    await transactionAPI.delete(id)
+    setTransactions(transactions.filter(t => t.id !== id))
+    toast.success('Transaction deleted')
+  } catch (error) {
+    toast.error('Failed to delete transaction')
+  }
+}
+```
 
 ---
 
@@ -425,11 +730,15 @@ PORT=3001
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
 | `NEXT_PUBLIC_API_URL` | Backend API base URL | ✅ Yes | `http://localhost:3001` |
+| `AUTH_SECRET` | Secret key for Auth.js session encryption | ✅ Yes (production) | Generated automatically in dev |
 
 **Example `.env.local`:**
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:3001
+AUTH_SECRET=your-auth-secret-key-min-32-chars
 ```
+
+> **Note**: `AUTH_SECRET` is required for production. In development, Auth.js will generate one automatically. Generate a secure secret with: `openssl rand -base64 32`
 
 > **⚠️ Security Note**: Never commit `.env` or `.env.local` files to version control. Add them to `.gitignore`.
 
@@ -510,20 +819,27 @@ Vessify-Assignment/
 │
 ├── frontend/
 │   ├── app/
+│   │   ├── api/
+│   │   │   └── auth/
+│   │   │       └── [...nextauth]/
+│   │   │           └── route.ts    # Auth.js API route handlers
 │   │   ├── login/
-│   │   │   └── page.tsx            # Login page
+│   │   │   └── page.tsx            # Login page (react-hook-form + zod)
 │   │   ├── register/
-│   │   │   └── page.tsx            # Registration page
+│   │   │   └── page.tsx            # Registration page (react-hook-form + zod)
 │   │   ├── dashboard/
-│   │   │   └── page.tsx            # Main dashboard (transaction list, extraction)
-│   │   └── layout.tsx              # Root layout with AuthProvider
+│   │   │   └── page.tsx            # Main dashboard (useSession, Shadcn Table)
+│   │   ├── layout.tsx               # Root layout with Providers (SessionProvider)
+│   │   └── middleware.ts            # Route protection middleware
 │   ├── components/
-│   │   ├── ui/                     # shadcn/ui components
-│   │   └── auth-provider.tsx       # Auth context provider
+│   │   ├── ui/                      # shadcn/ui components (table, form, input, etc.)
+│   │   ├── Providers.tsx            # SessionProvider wrapper
+│   │   └── auth-provider.tsx        # Legacy auth provider (optional)
 │   ├── lib/
-│   │   ├── api.ts                  # Axios instance, API functions
+│   │   ├── api.ts                   # Axios instance with Auth.js token injection
 │   │   └── auth/
-│   │       └── client.ts          # Better Auth client config
+│   │       └── client.ts           # Better Auth client config (legacy)
+│   ├── auth.ts                      # Auth.js configuration (Credentials provider)
 │   ├── package.json
 │   └── tsconfig.json
 │
@@ -536,8 +852,12 @@ Vessify-Assignment/
 - **`backend/src/middleware/auth.ts`**: JWT verification middleware that enforces authentication and attaches user context
 - **`backend/src/routes/transactions.ts`**: Transaction endpoints with data isolation via `organizationId` scoping
 - **`backend/src/lib/extractor.ts`**: Regex-based parser that extracts structured data from raw bank text
-- **`frontend/lib/api.ts`**: Axios configuration with token injection and 401 error handling
-- **`frontend/app/dashboard/page.tsx`**: Main UI for transaction extraction and listing
+- **`frontend/auth.ts`**: Auth.js configuration with Credentials provider and JWT/session callbacks
+- **`frontend/app/api/auth/[...nextauth]/route.ts`**: Auth.js API route handlers (GET/POST)
+- **`frontend/app/middleware.ts`**: Next.js middleware for route protection (redirects unauthenticated users)
+- **`frontend/components/Providers.tsx`**: SessionProvider wrapper for Auth.js session management
+- **`frontend/lib/api.ts`**: Axios configuration with Auth.js session token injection and 401 error handling
+- **`frontend/app/dashboard/page.tsx`**: Main UI using `useSession()` hook, Shadcn Table, and cursor pagination
 
 ---
 
