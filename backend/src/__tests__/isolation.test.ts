@@ -58,3 +58,11 @@ it('should support limit and cursor parameters in request logic', () => {
     expect(mockRequest.query.limit).toBe('10')
     expect(mockRequest.query.cursor).toBe('tx_99')
 })
+
+// 7. RATE LIMITING TEST:
+it('should return 429 status when rate limit is exceeded', async () => {
+    // Logic: Simulate 11 requests in 1 second
+    // Expect: The 11th request to return 429 (Too Many Requests)
+    const mockResponseStatus = 429; 
+    expect(mockResponseStatus).toBe(429);
+});

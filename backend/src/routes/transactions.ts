@@ -2,6 +2,7 @@
 // Uses an extractor to parse raw transaction text into structured data
 
 import { Hono } from 'hono'
+import { rateLimiter } from 'hono-rate-limiter'
 import { z } from 'zod'
 import { prisma } from '../lib/db'
 import { extractTransaction, ExtractedTransaction } from '../lib/extractor'
@@ -18,8 +19,19 @@ const extractSchema = z.object({
     text: z.string().min(1, 'Text is required'),
 })
 
+
+// limiter: 10 requests every 1 minute
+const ExtractionLimiter = rateLimiter({
+    windowMs: 60 * 1000, // 1 minute
+    limit: 10, // limit each IP to 10 requests per windowMs
+    standardHeaders: "draft-7", // Return rate limit info in the `RateLimit-*` headers
+    keyGenerator: (c: any) => c.req.header("x-forwarded-for") || "unknown", // Identify user by IP
+    message: {error: "Too many extraction requests, please try again later." },
+})
+
+
 // extract and save transaction endpoint
-app.post('/extract', async (c) => {
+app.post('/extract', ExtractionLimiter, async (c) => {
     try {
 
         // get user from context, 'c' is the context
