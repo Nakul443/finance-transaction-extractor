@@ -9,7 +9,8 @@
     "build": "tsc",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "test": "vitest run"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.8",
@@ -25,7 +26,8 @@
     "@types/node": "^25.0.6",
     "prisma": "^6.19.1",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
   },
   "keywords": [
     "vessify",

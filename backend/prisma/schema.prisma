@@ -32,14 +32,16 @@ model User {
 }
 
 // TRANSACTION MODEL: Stores financial transactions
+@@index([userId, createdAt])
+@@index([organizationId, date])
 model Transaction {
   id             String    @id @default(cuid())  // Unique ID for each transaction
   userId         String                          // Which user owns this transaction
   organizationId String                          // Which organization (for data isolation)
   date           DateTime                        // When the transaction occurred
   description    String                          // What the transaction was for
-  amount         Float                           // How much money was involved
-  balanceAfter   Float?                          // Balance after this transaction (optional)
+  amount         Decimal   @db.Decimal(10, 2)    // How much money was involved
+  balanceAfter Decimal?    @db.Decimal(10, 2)    // Balance after this transaction (optional)
   category       String?                         // Category like "Food", "Transport" etc.
   confidence     Float     @default(1.0)         // How confident our parser was (0.0 to 1.0)
   rawText        String?                         // Original bank statement text

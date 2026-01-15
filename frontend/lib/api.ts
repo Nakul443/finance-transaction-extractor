@@ -68,6 +68,8 @@ export const transactionAPI = {
     extract: (text: string) =>
         api.post('/api/transactions/extract', { text }),
 
+    delete: (id: string) => api.delete(`/api/transactions/${id}`),
+
     // defines the get history get API
     list: (limit?: number, cursor?: string) =>
         api.get('/api/transactions', { params: { limit, cursor } }),

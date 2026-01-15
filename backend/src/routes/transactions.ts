@@ -4,7 +4,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { prisma } from '../lib/db'
-import { extractTransaction } from '../lib/extractor'
+import { extractTransaction, ExtractedTransaction } from '../lib/extractor'
 import { AuthenticatedUser, authMiddleware } from '../middleware/auth'
 // Add this type import
 import { AppContext } from '../app'
@@ -64,6 +64,25 @@ app.post('/extract', async (c) => {
         }
         return c.json({ error: 'Internal server error' }, 500)
     }
+})
+
+// Delete a transaction
+app.delete('/:id', async (c) => {
+  const user = c.get('user') as any
+  const id = c.req.param('id')
+
+  try {
+    // We include userId in the 'where' to ensure you can't delete someone else's data
+    await prisma.transaction.delete({
+      where: { 
+        id,
+        userId: user.id 
+      }
+    })
+    return c.json({ message: 'Deleted successfully' })
+  } catch (error) {
+    return c.json({ error: 'Failed to delete or unauthorized' }, 400)
+  }
 })
 
 // get api with cursor pagination

@@ -34,15 +34,14 @@ export default function DashboardPage() {
     const token = localStorage.getItem('token')
     const storedUser = localStorage.getItem('user')
 
-    console.log("🔍 [DEBUG] Token found:", !!token)
-    console.log("🔍 [DEBUG] User found:", !!storedUser)
+    console.log("[DEBUG] Token found:", !!token)
+    console.log("[DEBUG] User found:", !!storedUser)
 
     if (!token || !storedUser) {
-      console.error("❌ [AUTH] Missing credentials! Redirecting to login...")
-      // COMMENT THIS OUT TEMPORARILY TO STOP THE LOOP
-      // router.push('/login') 
-      setIsPageLoading(false) // Let us see the page even if it fails
-      return
+      console.error("[AUTH] Missing credentials! Redirecting to login...")
+      console.log("No credentials found. Redirecting to login page.....");
+      router.push('/login');
+      return;
     }
 
     try {
@@ -51,10 +50,11 @@ export default function DashboardPage() {
       setIsPageLoading(false)
       fetchTransactions()
     } catch (e) {
-      console.error("❌ [AUTH] Data corruption in LocalStorage")
-      setIsPageLoading(false)
+      // If the data is corrupted, clear it and redirect
+      localStorage.clear();
+      router.push('/login');
     }
-  }, [])
+  }, [router])
 
   const fetchTransactions = async () => {
     setIsLoadingTransactions(true)
@@ -87,6 +87,7 @@ export default function DashboardPage() {
   const handleLogout = () => {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
+    setUser(null);
     router.push('/login')
   }
 
@@ -98,6 +99,10 @@ export default function DashboardPage() {
         <p className="mt-4 text-gray-500">Securing your session...</p>
       </div>
     )
+  }
+
+  function handleDelete(id: string): void {
+    throw new Error('Function not implemented.')
   }
 
   return (
@@ -142,12 +147,22 @@ export default function DashboardPage() {
             ) : (
               <div className="space-y-3">
                 {transactions.map((t) => (
-                  <div key={t.id} className="p-4 border rounded-md flex justify-between bg-white">
+                  <div key={t.id} className="p-4 border rounded-md flex justify-between items-center bg-white group">
                     <div>
                       <p className="font-bold">{t.description}</p>
                       <p className="text-sm text-gray-500">{new Date(t.date).toLocaleDateString()}</p>
                     </div>
-                    <p className="font-mono font-bold">₹{t.amount.toFixed(2)}</p>
+                    <div className="flex items-center gap-4">
+                      <p className="font-mono font-bold">₹{t.amount.toFixed(2)}</p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => handleDelete(t.id)}
+                      >
+                        Delete
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>

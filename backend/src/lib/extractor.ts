@@ -1,70 +1,83 @@
-// parses raw bank statement text into structured transaction data
-
-
 export interface ExtractedTransaction {
   date: Date
   description: string
   amount: number
-  balanceAfter?: number // '?' means optional
+  balanceAfter?: number
   confidence: number
-  category?: string // '?' means optional
+  category?: string
   rawText: string
 }
 
-// this function is a type of ExtractedTransaction
 export function extractTransaction(text: string): ExtractedTransaction {
   const rawText = text.trim()
+  const lowerText = rawText.toLowerCase()
 
-  // default values
-  let date = new Date() // date is a Date object
+  let date = new Date()
   let description = 'Transaction'
   let amount = 0
   let balanceAfter: number | undefined = undefined
-  let confidence = 0.7
+  let confidence = 0.5 // Start lower and earn confidence
   let category = 'Other'
 
-  // Simple date extraction
-  const dateMatch = rawText.match(/(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})|(\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})/)
+  // 1. Better Date Extraction (handles DD-MM-YY and DD MMM)
+  const dateMatch = rawText.match(/(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})|(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*)/i)
   if (dateMatch) {
-    try {
-      date = new Date(dateMatch[0])
-      if (!isNaN(date.getTime())) confidence += 0.1
-    } catch { }
+    const d = new Date(dateMatch[0])
+    if (!isNaN(d.getTime())) {
+      date = d
+      confidence += 0.2
+    }
   }
 
-  // Simple amount extraction
-  const amountMatch = rawText.match(/[₹$]?\s*([\d,]+\.?\d*)/)
-  if (amountMatch) {
-    amount = parseFloat(amountMatch[1].replace(/,/g, ''))
-    if (!isNaN(amount)) confidence += 0.1
+  // 2. Specific Amount Extraction
+  // This looks for numbers following keywords like "Rs", "INR", or "amounting to"
+  const amountPatterns = [
+    /(?:rs\.?|inr|amt|amount)\s*([\d,]+\.?\d*)/i,  // Rs. 500
+    /spent\s*([\d,]+\.?\d*)/i,                    // spent 500
+    /debited\s*(?:by|with)?\s*([\d,]+\.?\d*)/i    // debited by 500
+  ]
+
+  for (const pattern of amountPatterns) {
+    const match = rawText.match(pattern)
+    if (match) {
+      amount = parseFloat(match[1].replace(/,/g, ''))
+      confidence += 0.2
+      break
+    }
   }
 
-  // Simple balance extraction
-  const balanceMatch = rawText.match(/Balance[^\d]*[₹$]?\s*([\d,]+\.?\d*)/i)
+  // 3. Smart Merchant/Description Extraction
+  // Indian Bank Format: "Paid to [Merchant] at [Time]" or "at [Merchant] using UPI"
+  const merchantMatch = rawText.match(/(?:paid to|at|to|vpa)\s+([^.\n]+?)(?:\s+on|\s+at|\s+using|\s+for|$)/i)
+  if (merchantMatch) {
+    description = merchantMatch[1].trim()
+    confidence += 0.2
+  } else {
+    // Fallback: use first 30 chars
+    description = rawText.substring(0, 30).replace(/\n/g, ' ') + "..."
+  }
+
+  // 4. Balance Detection
+  const balanceMatch = rawText.match(/(?:bal|balance|available|avl)\s*(?:is|:)?\s*[rs.]*\s*([\d,]+\.?\d*)/i)
   if (balanceMatch) {
     balanceAfter = parseFloat(balanceMatch[1].replace(/,/g, ''))
-    if (!isNaN(balanceAfter)) confidence += 0.1
-  }
-
-  // Simple description
-  const lines = rawText.split('\n').filter(line =>
-    line.trim().length > 0 &&
-    !line.match(/Date:|Amount:|Balance:/i) &&
-    !line.match(/\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/)
-  )
-
-  if (lines.length > 0) {
-    description = lines[0].substring(0, 100).trim()
     confidence += 0.1
   }
 
-  // Simple category detection
-  if (description.toLowerCase().includes('starbucks') || description.toLowerCase().includes('coffee')) {
-    category = 'Food & Dining'
-  } else if (description.toLowerCase().includes('uber') || description.toLowerCase().includes('ride')) {
-    category = 'Transport'
-  } else if (description.toLowerCase().includes('amazon') || description.toLowerCase().includes('shopping')) {
-    category = 'Shopping'
+  // 5. Category Keyword Map (Expanded)
+  const categoryMap: { [key: string]: string[] } = {
+    'Food & Dining': ['swiggy', 'zomato', 'restaurant', 'cafe', 'dine', 'hotel', 'starbucks', 'kfc'],
+    'Transport': ['uber', 'ola', 'irctc', 'petrol', 'fuel', 'shell', 'metro'],
+    'Shopping': ['amazon', 'flipkart', 'myntra', 'blinkit', 'zepto', 'dmart'],
+    'Utilities': ['recharge', 'bill', 'electricity', 'jio', 'airtel', 'insurance']
+  }
+
+  for (const [cat, keywords] of Object.entries(categoryMap)) {
+    if (keywords.some(kw => lowerText.includes(kw))) {
+      category = cat
+      confidence += 0.1
+      break
+    }
   }
 
   confidence = Math.min(confidence, 1.0)
