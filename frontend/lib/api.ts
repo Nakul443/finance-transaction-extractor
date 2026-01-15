@@ -1,13 +1,3 @@
-// lib/api.ts
-// this file is a HTTP client to call backend endpoints (register, login, transactions, etc.)
-// used for all connections to the backend API
-// acts as a "phone line" between frontend and backend
-// keeps all backend URLs and headers in one place
-// also adds authentication token to every request if it exists
-// simplifies sending requests to the backend from other parts of the frontend code
-
-// Frontend → api.ts → Backend (localhost:3001)
-
 import axios from 'axios'
 // axios is a tool for sending HTTP from a website to a server
 import { authClient } from './auth/client' // Import Better Auth client
@@ -29,13 +19,13 @@ api.interceptors.request.use(async (config) => {
     if (typeof window !== 'undefined') {
         // check if code is running in a browser
         
-        // Get session from Better Auth instead of localStorage
-        const session = await authClient.getSession()
+        // LITERAL FIX: Get the token we saved in Login/Register
+        const token = localStorage.getItem('token')
         
-        if (session?.data?.session?.token) {
-            // if token exists in Better Auth session, add it to the request headers
+        if (token) {
+            // if token exists in localStorage, add it to the request headers
             // put word 'Bearer ' in the front of the token
-            config.headers.Authorization = `Bearer ${session.data.session.token}`
+            config.headers.Authorization = `Bearer ${token}`
         }
     }
 
@@ -48,9 +38,10 @@ api.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
-            // Unauthorized - clear Better Auth session and redirect to login
-            authClient.signOut()
+            // Unauthorized - clear memory and redirect to login
             if (typeof window !== 'undefined') {
+                localStorage.removeItem('token')
+                localStorage.removeItem('user')
                 window.location.href = '/login'
             }
         }
@@ -61,12 +52,11 @@ api.interceptors.response.use(
 // object authAPI
 // the function inside takes data and sends it to the backend API using axios instance created above
 export const authAPI = {
-
-    // for registration (Better Auth handles this via authClient.signUp)
+    // for registration
     register: (data: { email: string; password: string; name?: string }) =>
         api.post('/api/auth/register', data),
 
-    // for login (Better Auth handles this via authClient.signIn)
+    // for login
     login: (data: { email: string; password: string }) =>
         api.post('/api/auth/login', data),
 }

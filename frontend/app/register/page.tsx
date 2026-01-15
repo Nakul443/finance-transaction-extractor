@@ -40,39 +40,38 @@ export default function RegisterPage() {
             // Use Better Auth client for registration
             // sends email, password and name to hono backend via Better Auth
             // backend creates the user and returns a token
-            const result = await authClient.signUp.email({
+            const payload = {
                 email,
                 password,
-                name
-            })
+                ...(name.trim() ? { name } : {})
+            };
+            const response = await fetch('http://localhost:3001/api/auth/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
 
-            if (result?.error) {
-                toast.error('Registration failed', {
-                    description: result.error.message || 'Please try again'
-                })
+            const data = await response.json();
+
+            if (response.ok && data.token) {
+                // SUCCESS: Save the "Keycards" just like in Login
+                localStorage.setItem('token', data.token);
+                localStorage.setItem('user', JSON.stringify(data.user));
+                
+                toast.success('Account created successfully!');
+                
+                // Redirect to dashboard
+                window.location.href = '/dashboard';
             } else {
-                toast.success('Account created successfully!')
-                
-                // Auto-login after registration using Better Auth
-                const loginResult = await authClient.signIn.email({
-                    email,
-                    password
-                })
-                
-                if (loginResult?.error) {
-                    // If auto-login fails, redirect to login page
-                    toast.info('Account created. Please login manually.')
-                    router.push('/login') // redirect to login page
-                } else {
-                    // Success! Redirect to dashboard
-                    router.push('/dashboard')
-                }
+                // If backend sent a specific error message, show it
+                toast.error(data.error || 'Registration failed');
             }
 
         } catch (err: any) {
             // Show error message from backend or generic error
             const errorMessage = err.response?.data?.error || 'Registration failed'
             toast.error(errorMessage)
+            console.log('errorMessage:', err)
             console.error('Registration error:', err)
         } finally {
             setLoading(false)

@@ -1,17 +1,14 @@
-// app/dashboard/page.tsx
 'use client'
 
-import { useState, useEffect } from 'react' // react memory and side effects (allows to perform actions that occur outside normal rendering)
-import { useRouter } from 'next/navigation' // allows page changes
-import { Button } from '@/components/ui/button' // import button component
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card' // import card components
-import { Textarea } from '@/components/ui/textarea' // import textarea component
-import { transactionAPI } from '@/lib/api' // import transactionAPI from api.ts
-import { authClient } from '@/lib/auth/client' // import Better Auth client
-import { toast } from 'sonner' // for showing success/error messages
-import { Loader2 } from 'lucide-react' // loading spinner icon
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Textarea } from '@/components/ui/textarea'
+import { transactionAPI } from '@/lib/api'
+import { toast } from 'sonner'
+import { Loader2 } from 'lucide-react'
 
-// transaction type definition according to the backend
 interface Transaction {
   id: string
   date: string
@@ -23,128 +20,84 @@ interface Transaction {
   createdAt: string
 }
 
-// main function for dashboard page
 export default function DashboardPage() {
   const router = useRouter()
   const [text, setText] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(false)
-  const [pagination, setPagination] = useState({
-    hasMore: false,
-    nextCursor: null as string | null,
-    total: 0
-  })
-  const [session, setSession] = useState<any>(null) // Better Auth session state
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true) // Auth checking state
+  const [user, setUser] = useState<any>(null)
+  const [isPageLoading, setIsPageLoading] = useState(true) // Initial "Global" loading
 
-  // Check authentication with Better Auth
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        // Get session from Better Auth
-        const authSession = await authClient.getSession()
-        
-        if (authSession?.data?.user) {
-          setSession(authSession.data)
-        } else {
-          // No session, redirect to login
-          router.push('/login')
-        }
-      } catch (error) {
-        console.error('Auth check error:', error)
-        router.push('/login')
-      } finally {
-        setIsCheckingAuth(false)
-      }
+    // 1. Check if we have the keys
+    const token = localStorage.getItem('token')
+    const storedUser = localStorage.getItem('user')
+
+    console.log("🔍 [DEBUG] Token found:", !!token)
+    console.log("🔍 [DEBUG] User found:", !!storedUser)
+
+    if (!token || !storedUser) {
+      console.error("❌ [AUTH] Missing credentials! Redirecting to login...")
+      // COMMENT THIS OUT TEMPORARILY TO STOP THE LOOP
+      // router.push('/login') 
+      setIsPageLoading(false) // Let us see the page even if it fails
+      return
     }
 
-    checkAuth()
-  }, [router])
-
-  // Load initial transactions when session is available
-  useEffect(() => {
-    if (session) {
-      loadTransactions()
+    try {
+      const parsedUser = JSON.parse(storedUser)
+      setUser(parsedUser)
+      setIsPageLoading(false)
+      fetchTransactions()
+    } catch (e) {
+      console.error("❌ [AUTH] Data corruption in LocalStorage")
+      setIsPageLoading(false)
     }
-  }, [session])
+  }, [])
 
-  const loadTransactions = async () => {
+  const fetchTransactions = async () => {
     setIsLoadingTransactions(true)
     try {
       const response = await transactionAPI.list(10)
       setTransactions(response.data.transactions)
-      setPagination(response.data.pagination)
     } catch (error) {
-      toast.error('Failed to load transactions')
+      console.error('Fetch error:', error)
+      toast.error('Failed to load transactions. Check your backend connection.')
     } finally {
       setIsLoadingTransactions(false)
     }
   }
 
   const handleExtract = async () => {
-    if (!text.trim()) {
-      toast.error('Please enter some text to parse')
-      return
-    }
-
+    if (!text.trim()) return
     setIsLoading(true)
     try {
       const response = await transactionAPI.extract(text)
-      
-      // Add new transaction to the list
       setTransactions([response.data.transaction, ...transactions])
-      
-      toast.success('Transaction extracted!', {
-        description: `Confidence: ${(response.data.extractionDetails.confidence * 100).toFixed(0)}%`
-      })
-      
-      // Clear textarea
       setText('')
-      
-      // Refresh transaction count
-      loadTransactions()
+      toast.success('Transaction saved!')
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Extraction failed')
+      toast.error('Extraction failed')
     } finally {
       setIsLoading(false)
     }
   }
 
-  const loadMore = async () => {
-    if (!pagination.nextCursor) return
-    
-    try {
-      const response = await transactionAPI.list(10, pagination.nextCursor)
-      setTransactions([...transactions, ...response.data.transactions])
-      setPagination(response.data.pagination)
-    } catch (error) {
-      toast.error('Failed to load more transactions')
-    }
+  const handleLogout = () => {
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
+    router.push('/login')
   }
 
-  // Handle logout with Better Auth
-  const handleLogout = async () => {
-    try {
-      await authClient.signOut()
-      router.push('/login')
-    } catch (error) {
-      console.error('Logout error:', error)
-    }
-  }
-
-  // Loading state while checking auth
-  if (isCheckingAuth) {
+  // 3. THIS IS THE SCREEN YOU WERE STUCK ON
+  if (isPageLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin" />
+      <div className="min-h-screen flex flex-col items-center justify-center">
+        <Loader2 className="h-10 w-10 animate-spin text-blue-600" />
+        <p className="mt-4 text-gray-500">Securing your session...</p>
       </div>
     )
-  }
-
-  // If no session, don't render (redirect will happen)
-  if (!session) {
-    return null
   }
 
   return (
@@ -153,117 +106,51 @@ export default function DashboardPage() {
         <header className="mb-8 flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">
-              Welcome, {session.user?.name || session.user?.email}!
+              Welcome, {user?.name || 'User'}!
             </h1>
-            <p className="text-gray-600 mt-2">
-              Organization ID: {session.user?.organizationId}
-            </p>
+            <p className="text-gray-600">Org: {user?.organizationId}</p>
           </div>
-          <Button 
-            variant="outline" 
-            onClick={handleLogout}
-            className="ml-4"
-          >
-            Logout
-          </Button>
+          <Button variant="outline" onClick={handleLogout}>Logout</Button>
         </header>
 
-        {/* Extraction Card */}
         <Card className="mb-8">
           <CardHeader>
             <CardTitle>Extract Transaction</CardTitle>
-            <CardDescription>
-              Paste your bank statement text below
-            </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <Textarea
-                placeholder={`Try these sample texts:\n\n1. Date: 11 Dec 2025\nDescription: STARBUCKSCOFFEEMUMBAI\nAmount: 420.00\nBalance after transaction: 18,420.50\n\n2. Uber Ride * Airport Drop\n12/11/2025 → x1,250.00 debited\nAvailable Balance → x17,170.50\n\n3. txrt123 2025-12-10 Amazon in Order #403-1284567 8901284 x2,999.00 Dr Bal 14171.50 Shopping`}
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                rows={8}
-                className="resize-none font-mono"
-              />
-              <Button 
-                onClick={handleExtract} 
-                disabled={isLoading || !text.trim()}
-                className="w-full"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Extracting...
-                  </>
-                ) : (
-                  'Extract & Save Transaction'
-                )}
-              </Button>
-            </div>
+          <CardContent className="space-y-4">
+            <Textarea
+              placeholder="Paste bank text here..."
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              rows={5}
+            />
+            <Button onClick={handleExtract} disabled={isLoading} className="w-full">
+              {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Extract'}
+            </Button>
           </CardContent>
         </Card>
 
-        {/* Transactions Card */}
         <Card>
           <CardHeader>
-            <CardTitle>Your Transactions</CardTitle>
-            <CardDescription>
-              {pagination.total} transactions found
-            </CardDescription>
+            <CardTitle>Transactions</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoadingTransactions ? (
-              <div className="flex justify-center py-8">
-                <Loader2 className="h-8 w-8 animate-spin" />
-              </div>
+              <div className="flex justify-center py-10"><Loader2 className="animate-spin" /></div>
             ) : transactions.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                No transactions yet. Paste a bank statement above to get started!
-              </div>
+              <p className="text-center py-10 text-gray-400">No transactions found.</p>
             ) : (
-              <>
-                <div className="space-y-4">
-                  {transactions.map((transaction) => (
-                    <div key={transaction.id} className="border rounded-lg p-4">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h3 className="font-semibold">{transaction.description}</h3>
-                          <p className="text-sm text-gray-500">
-                            {new Date(transaction.date).toLocaleDateString()} • {transaction.category || 'Uncategorized'}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className={`font-bold ${
-                            transaction.amount < 0 ? 'text-red-600' : 'text-green-600'
-                          }`}>
-                            ₹{Math.abs(transaction.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            Confidence: {(transaction.confidence * 100).toFixed(0)}%
-                          </p>
-                        </div>
-                      </div>
-                      {transaction.balanceAfter && (
-                        <p className="text-sm text-gray-600 mt-2">
-                          Balance after: ₹{transaction.balanceAfter.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                        </p>
-                      )}
+              <div className="space-y-3">
+                {transactions.map((t) => (
+                  <div key={t.id} className="p-4 border rounded-md flex justify-between bg-white">
+                    <div>
+                      <p className="font-bold">{t.description}</p>
+                      <p className="text-sm text-gray-500">{new Date(t.date).toLocaleDateString()}</p>
                     </div>
-                  ))}
-                </div>
-
-                {pagination.hasMore && (
-                  <div className="flex justify-center mt-6">
-                    <Button
-                      onClick={loadMore}
-                      variant="outline"
-                      disabled={!pagination.nextCursor}
-                    >
-                      Load More Transactions
-                    </Button>
+                    <p className="font-mono font-bold">₹{t.amount.toFixed(2)}</p>
                   </div>
-                )}
-              </>
+                ))}
+              </div>
             )}
           </CardContent>
         </Card>

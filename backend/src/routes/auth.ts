@@ -152,49 +152,39 @@ app.post('/logout', async (c) => {
 app.get('/session', async (c) => {
   try {
     const authHeader = c.req.header('Authorization');
-    
-    // If no auth header, return no session
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return c.json({ user: null }, 200);
+      return c.json({ data: null }, 200); // Better Auth expects 'data' key
     }
     
-    // Extract and verify token
     const token = authHeader.substring(7);
-    
-    try {
-      const { payload } = await jwtVerify(token, JWT_SECRET);
-      
-      // Get user from database
-      const user = await prisma.user.findUnique({
-        where: { id: payload.userId as string },
-        select: { 
-          id: true, 
-          email: true, 
-          name: true, 
-          organizationId: true,
-          createdAt: true 
-        }
-      });
-      
-      if (!user) {
-        return c.json({ user: null }, 200);
-      }
-      
-      // Return user and token (Better Auth expects this structure)
-      return c.json({
+    const { payload } = await jwtVerify(token, JWT_SECRET);
+
+    const user = await prisma.user.findUnique({
+      where: { id: payload.userId as string },
+      select: { id: true, email: true, name: true, organizationId: true }
+    });
+
+    // Return the structure the frontend 'authClient.session()' expects
+    return c.json({
+      data: {
         user,
-        token // Return the same token for Better Auth
-      });
-      
-    } catch (jwtError) {
-      // Token is invalid or expired
-      return c.json({ user: null }, 200);
-    }
-    
+        session: { expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() }
+      }
+    });
   } catch (error) {
-    console.error('Session error:', error);
-    return c.json({ user: null }, 200);
+    return c.json({ data: null }, 200);
   }
+});
+
+app.post('/sign-up/email', async (c) => {
+  // Forward to your /api/auth/register
+  const body = await c.req.json();
+  // Call your own register logic
+  // Return Better Auth format
+});
+
+app.post('/sign-in/email', async (c) => {
+  // Forward to your /api/auth/login
 });
 
 export { app as authRoutes }
