@@ -1,3 +1,4 @@
+// schema of what the output should look like
 export interface ExtractedTransaction {
   date: Date
   description: string
@@ -12,9 +13,12 @@ export interface ExtractedTransaction {
 // by using a weighted scoring system to improve accuracy
 // the point of confidence is to give an idea of how sure we are about the extraction
 export function extractTransaction(text: string): ExtractedTransaction {
+
+  // removes extra spaces and creates a lowercase version for easier searching
   const rawText = text.trim()
   const lowerText = rawText.toLowerCase()
 
+  // default values just in case extraction fails
   let date = new Date()
   let description = 'Transaction'
   let amount = 0

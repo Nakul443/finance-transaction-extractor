@@ -1,9 +1,0 @@
-{
-  "dependencies": {
-    "@fontsource/inter": "^5.2.8",
-    "@hono-rate-limiter/cloudflare": "^0.2.2",
-    "@hono-rate-limiter/redis": "^0.1.4",
-    "better-auth": "^1.4.12",
-    "sonner": "^2.0.7"
-  }
-}

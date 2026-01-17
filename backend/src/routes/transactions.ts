@@ -1,50 +1,53 @@
-// It talks to the database to save/retrieve transactions, ensuring each user only sees their own data
-// Uses an extractor to parse raw transaction text into structured data
+// request hits /extract
+// -> rate limiter (checks if user has made > 10 in the last minute)
+// -> identity retrieval (pulls user data out of AppContext backpack provided by middleware)
+// -> input validation (uses zod to ensure incoming JSON contains a valid "text" string)
+// -> data extraction (calls extractTransaction to turn messy text into structured numbers and dates)
+// -> database command (uses prisma to create a new record tied to the specific userId and organizationId)
+// -> response sent
 
 import { Hono } from 'hono'
 import { rateLimiter } from 'hono-rate-limiter'
-import { z } from 'zod'
+import { z } from 'zod' // validates incoming data
 import { prisma } from '../lib/db'
-import { extractTransaction, ExtractedTransaction } from '../lib/extractor'
-import { AuthenticatedUser, authMiddleware } from '../middleware/auth'
-// Add this type import
+import { extractTransaction } from '../lib/extractor' // custom logic to read text
+import { AuthenticatedUser } from '../middleware/auth'
 import { AppContext } from '../app'
 
-// const user = c.get('user') as AuthenticatedUser
-
+// tells hono that every route in this file has access to the "backpack"
 const app = new Hono<AppContext>()
 
-// validation schema for transaction creation
+// zod used to create a "schema"
+// defines what a valid request looks like
+// if user doesn't send a 'text' string, reject it
 const extractSchema = z.object({
     text: z.string().min(1, 'Text is required'),
 })
 
-
-// limiter: 10 requests every 1 minute
+// rate limiter
+// 10 requests every 60 seconds
 const ExtractionLimiter = rateLimiter({
-    windowMs: 60 * 1000, // 1 minute
-    limit: 10, // limit each IP to 10 requests per windowMs
-    standardHeaders: "draft-7", // Return rate limit info in the `RateLimit-*` headers
-    keyGenerator: (c: any) => c.req.header("x-forwarded-for") || "unknown", // Identify user by IP
-    message: {error: "Too many extraction requests, please try again later." },
+    windowMs: 60 * 1000,
+    limit: 10,
+    standardHeaders: "draft-7",
+    keyGenerator: (c: any) => c.req.header("x-forwarded-for") || "unknown",
+    message: { error: "Too many extraction requests, please try again later." },
 })
 
-
-// extract and save transaction endpoint
+// Extract and save (convert text into a DB record)
 app.post('/extract', ExtractionLimiter, async (c) => {
     try {
-
-        // get user from context, 'c' is the context
+        // grab user info that authMiddleware verified
         const user = c.get('user') as AuthenticatedUser
-
-        // get JSON body from request
         const body = await c.req.json()
+
+        // validates incoming data
         const { text } = extractSchema.parse(body)
 
-        // use extractor to parse raw data into structured format
+        // extract data using the 'extractor' logic
         const extracted = extractTransaction(text)
 
-        // save transaction to database
+        // save transaction to the PostgreSQL database using prisma
         const transaction = await prisma.transaction.create({
             data: {
                 amount: extracted.amount,
@@ -52,108 +55,74 @@ app.post('/extract', ExtractionLimiter, async (c) => {
                 description: extracted.description,
                 category: extracted.category || 'Uncategorized',
                 confidence: extracted.confidence,
-                rawText: extracted.rawText,
+                rawText: text, // Save the actual raw text
                 balanceAfter: extracted.balanceAfter,
                 userId: user.id,
                 organizationId: user.organizationId
             }
         })
 
-        // return saved transaction
-        return c.json({
-            message: 'Transaction saved successfully',
-            transaction,
-            extractionDetails: {
-                confidence: extracted.confidence,
-                category: extracted.category
-            }
-        }, 201)
-
+        return c.json({ message: 'Transaction saved', transaction }, 201)
     } catch (error) {
-        console.error('Error extracting transaction:', error)
-        if (error instanceof z.ZodError) {
-            return c.json({ error: 'Validation error', details: error.issues }, 400)
+        return c.json({ error: 'Failed to process transaction' }, 500)
+    }
+})
+
+// List with Cursor Pagination and Isolation
+app.get('/', async (c) => {
+    try {
+        const user = c.get('user') as AuthenticatedUser
+
+        // get URL parameters
+        const limit = parseInt(c.req.query('limit') || '10')
+        const cursor = c.req.query('cursor')
+
+        // data isolation
+        // only query data belonging to the user's organization
+        const where = {
+            organizationId: user.organizationId // Data Isolation check
         }
+
+        // fetch records from the database
+        const transactions = await prisma.transaction.findMany({
+            where,
+            take: limit + 1,
+            cursor: cursor ? { id: cursor } : undefined,
+            orderBy: { date: 'desc' },
+        })
+
+        const hasMore = transactions.length > limit
+        const items = hasMore ? transactions.slice(0, -1) : transactions
+        const nextCursor = hasMore ? items[items.length - 1]?.id : null
+
+        return c.json({
+            transactions: items,
+            nextCursor,
+            total: await prisma.transaction.count({ where })
+        })
+    } catch (error) {
         return c.json({ error: 'Internal server error' }, 500)
     }
 })
 
-// Delete a transaction
+// Delete (Self-Correction: Using organizationId for extra safety)
 app.delete('/:id', async (c) => {
-  const user = c.get('user') as any
-  const id = c.req.param('id')
+    // grab user data authenticated by the middleware
+    const user = c.get('user') as AuthenticatedUser
+    const id = c.req.param('id') // get ID from URL
 
-  try {
-    // We include userId in the 'where' to ensure you can't delete someone else's data
-    await prisma.transaction.delete({
-      where: { 
-        id,
-        userId: user.id 
-      }
-    })
-    return c.json({ message: 'Deleted successfully' })
-  } catch (error) {
-    return c.json({ error: 'Failed to delete or unauthorized' }, 400)
-  }
-})
-
-// get api with cursor pagination
-app.get('/', async (c) => {
     try {
-        // 'c' is the context, which holds request and response info
-        // get user from context
-        const user = c.get('user') as any
-
-        // Get query parameters
-        const limit = parseInt(c.req.query('limit') || '10')
-        const cursor = c.req.query('cursor')
-
-        // Build query with data isolation
-        // the database will only return transactions if it belongs to that user and their organization
-        // multi-tenancy
-        const where = {
-            userId: user.id,
-            organizationId: user.organizationId
-        }
-
-        // Fetch transactions
-        const transactions = await prisma.transaction.findMany({
-            where, // only fetch transactions for this user and their organization, data isolation
-            take: limit + 1, // Get one extra to check if there are more, simple checking
-            cursor: cursor ? { id: cursor } : undefined,
-            orderBy: { date: 'desc' },
-            select: {
-                id: true,
-                date: true,
-                description: true,
-                amount: true,
-                category: true,
-                confidence: true,
-                balanceAfter: true,
-                createdAt: true
+        // delete only if the ID matches and the organizationId matches
+        // This prevents User A from deleting user B's transactions
+        await prisma.transaction.delete({
+            where: { 
+                id,
+                organizationId: user.organizationId // Prevents cross-tenant deletion
             }
         })
-
-        // Check if there are more transactions
-        const hasMore = transactions.length > limit // tells frontend where to show "load more" button
-        const items = hasMore ? transactions.slice(0, -1) : transactions // remove extra item if exists
-        const nextCursor = hasMore ? items[items.length - 1]?.id : null
-        // take ID of last item in our list, frontend will send this ID back when user clicks "load more"
-
-        // response
-        return c.json({
-            transactions: items,
-            pagination: {
-                limit,
-                hasMore,
-                nextCursor,
-                total: await prisma.transaction.count({ where })
-            }
-        })
-
+        return c.json({ message: 'Deleted successfully' })
     } catch (error) {
-        console.error('Error fetching transactions:', error)
-        return c.json({ error: 'Failed to fetch transactions' }, 500)
+        return c.json({ error: 'Delete failed' }, 400)
     }
 })
 

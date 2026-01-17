@@ -1,132 +1,90 @@
-// User → Enter name/email/password → Click Register →
-// api.ts sends to backend → Backend creates user → Returns token → Save token → Redirect to dashboard
-// This file sends the data
-// The auth.ts backend file receives it
-// The backend hashes the password and generates a unique organizationId
-// This file receives that organizationId inside the token and saves it
+'use client'
 
-// flow : Register → Backend creates user → Auto-login via Better Auth → Dashboard
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import * as z from 'zod'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
+import { signIn } from 'next-auth/react'
+import { toast } from 'sonner'
+import { Loader2 } from 'lucide-react'
+import Link from 'next/link'
+import { authAPI } from '@/lib/api'
 
+const registerSchema = z.object({
+  name: z.string().min(2, 'Name is required'),
+  email: z.string().email('Invalid email'),
+  password: z.string().min(6, 'Min 6 characters'),
+})
 
-'use client' // tells next.js that this page is interactive
-// interactive means it can respond to user actions like clicks
-// non-interactive pages are static and cannot respond to user actions
-// interactive pages need to be rendered on the client side
-// non-interactive pages can be rendered on the server side
-
-import { useState } from 'react' // react's memory
-import { useRouter } from 'next/navigation' // allows page changes
-import { Button } from '@/components/ui/button' // import button component
-import { Input } from '@/components/ui/input' // import input component
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card' // import card components
-import { authClient } from '@/lib/auth/client' // import Better Auth client
-import { toast } from 'sonner' // for showing success/error messages
-
-
-// function for registration page
 export default function RegisterPage() {
     const router = useRouter()
-    const [email, setEmail] = useState('') // store user's email
-    const [password, setPassword] = useState('') // store user's password
-    const [name, setName] = useState('') // store user's name
-    const [loading, setLoading] = useState(false) // loading state for button
+    const [loading, setLoading] = useState(false)
 
-    // function that runs when the user submits the form
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault() // Stop the browser from refreshing the page
-        setLoading(true)   // Turn the "Loading" switch to ON
+    const form = useForm<z.infer<typeof registerSchema>>({
+        resolver: zodResolver(registerSchema),
+        defaultValues: { name: '', email: '', password: '' }
+    })
 
+    const onSubmit = async (values: z.infer<typeof registerSchema>) => {
+        setLoading(true)
         try {
-            // Use Better Auth client for registration
-            // sends email, password and name to hono backend via Better Auth
-            // backend creates the user and returns a token
-            const payload = {
-                email,
-                password,
-                ...(name.trim() ? { name } : {})
-            };
-            const response = await fetch('http://localhost:3001/api/auth/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
+            // 1. Create User in Backend
+            await authAPI.register(values)
+            
+            // 2. Auto-login via Auth.js
+            const result = await signIn("credentials", {
+                email: values.email,
+                password: values.password,
+                redirect: false
+            })
 
-            const data = await response.json();
-
-            if (response.ok && data.token) {
-                // SUCCESS: Save the "Keycards" just like in Login
-                localStorage.setItem('token', data.token);
-                localStorage.setItem('user', JSON.stringify(data.user));
-                
-                toast.success('Account created successfully!');
-                
-                // Redirect to dashboard
-                window.location.href = '/dashboard';
+            if (result?.error) {
+                toast.error("Account created but login failed. Please login manually.")
+                router.push('/login')
             } else {
-                // If backend sent a specific error message, show it
-                toast.error(data.error || 'Registration failed');
+                toast.success('Welcome to Vessify!')
+                window.location.href = '/dashboard'
             }
-
         } catch (err: any) {
-            // Show error message from backend or generic error
-            const errorMessage = err.response?.data?.error || 'Registration failed'
-            toast.error(errorMessage)
-            console.log('errorMessage:', err)
-            console.error('Registration error:', err)
+            toast.error(err.response?.data?.error || 'Registration failed')
         } finally {
             setLoading(false)
         }
     }
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
             <Card className="w-full max-w-md">
                 <CardHeader>
                     <CardTitle>Create Account</CardTitle>
-                    <CardDescription>Sign up to start extracting transactions</CardDescription>
+                    <CardDescription>Join Vessify to manage your transactions</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                        <div>
-                            <Input
-                                type="text"
-                                placeholder="Full Name (optional)"
-                                value={name}
-                                onChange={(e) => setName(e.target.value)}
-                            />
-                        </div>
-                        <div>
-                            <Input
-                                type="email"
-                                placeholder="Email"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                required
-                            />
-                        </div>
-                        <div>
-                            <Input
-                                type="password"
-                                placeholder="Password (min 6 characters)"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                required
-                                minLength={6}
-                            />
-                        </div>
-
-                        <Button type="submit" className="w-full" disabled={loading}>
-                            {loading ? 'Creating account...' : 'Register'}
-                        </Button>
-
-                        <div className="text-center text-sm">
-                            Already have an account?{' '}
-                            <a href="/login" className="text-blue-600 hover:underline">
-                                Login
-                            </a>
-                        </div>
-                    </form>
+                    <Form {...form}>
+                        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                            <FormField control={form.control} name="name" render={({ field }) => (
+                                <FormItem><FormLabel>Name</FormLabel><FormControl><Input placeholder="John Doe" {...field} /></FormControl><FormMessage /></FormItem>
+                            )} />
+                            <FormField control={form.control} name="email" render={({ field }) => (
+                                <FormItem><FormLabel>Email</FormLabel><FormControl><Input placeholder="email@example.com" {...field} /></FormControl><FormMessage /></FormItem>
+                            )} />
+                            <FormField control={form.control} name="password" render={({ field }) => (
+                                <FormItem><FormLabel>Password</FormLabel><FormControl><Input type="password" {...field} /></FormControl><FormMessage /></FormItem>
+                            )} />
+                            <Button type="submit" className="w-full" disabled={loading}>
+                                {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Register'}
+                            </Button>
+                        </form>
+                    </Form>
                 </CardContent>
+                <CardFooter className="justify-center">
+                    <p className="text-sm text-gray-500">Already have an account? <Link href="/login" className="text-blue-600 hover:underline font-medium">Login</Link></p>
+                </CardFooter>
             </Card>
         </div>
     )

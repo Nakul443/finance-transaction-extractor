@@ -1,7 +1,13 @@
 import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
+import { authConfig } from "./auth.config"
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
+export const { handlers, auth, signIn, signOut } = NextAuth({
+  ...authConfig,
+  // 1. Add trustHost to fix the 'UntrustedHost' error
+  trustHost: true, 
+  secret: process.env.NEXTAUTH_SECRET, 
+  session: { strategy: "jwt" },
   providers: [
     Credentials({
       name: "Credentials",
@@ -10,7 +16,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
-        // Here we call YOUR Hono backend login endpoint
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/login`, {
           method: 'POST',
           body: JSON.stringify(credentials),
@@ -19,30 +24,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         const data = await res.json()
 
-        // If login is successful, return the user + token
         if (res.ok && data.user) {
           return {
             ...data.user,
-            accessToken: data.token // This is the JWT from your Hono backend
+            accessToken: data.token 
           }
         }
         return null
       }
     })
   ],
-  callbacks: {
-    // This part "Syncs" your Hono JWT with the Auth.js Session
-    async jwt({ token, user }) {
-      if (user) {
-        token.accessToken = (user as any).accessToken
-        token.organizationId = (user as any).organizationId
-      }
-      return token
-    },
-    async session({ session, token }) {
-      (session as any).accessToken = token.accessToken;
-      (session as any).organizationId = token.organizationId;
-      return session
-    }
-  }
 })

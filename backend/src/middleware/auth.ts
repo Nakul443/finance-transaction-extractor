@@ -1,6 +1,14 @@
 // for protecting routes with JWT
 // authentication middleware
 
+// request intercepted -> header check (checks if Authorization: Bearer <token> exists)
+// -> token extraction (strip away "Bearer ") -> verification (jwtVerify and JWT_SECRET)
+// -> payload extraction (pull userId out of verified token)
+// -> database validation (use prisma to check if userId exists in database)
+// -> save user's ID, email, orgID into 'c' backpack using c.set()
+// -> await next() called allowing request to move to the actual API logic ->
+// -> error handling
+
 import { createMiddleware } from 'hono/factory' // to create middleware, this function intercepts a request before it reaches the logic
 import { jwtVerify } from 'jose' // JWT verification
 import { prisma } from '../lib/db' // Database client
@@ -56,9 +64,9 @@ export const authMiddleware = createMiddleware(async (c, next) => {
         }
 
         // Attach user info to request context
-        // Now any route can access: c.get('user')
+        // Now any route of the same request can access: c.get('user')
         // this way we know which user is making the request
-        // and other function don't have to re-verify the token and the user again and again
+        // and other functions don't have to re-verify the token and the user again and again
         c.set('user', {
         id: user.id,
         email: user.email,
