@@ -26,7 +26,7 @@ export default function DashboardPage() {
   const router = useRouter()
   // Auth.js session hook
   const { data: session, status } = useSession()
-  
+
   const [text, setText] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -36,16 +36,16 @@ export default function DashboardPage() {
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
 
-  // 1. Check if we have the session (Replaces your localStorage useEffect)
+  // 1. Updated Effect: Fires only when auth is confirmed and token is present
   useEffect(() => {
     if (status === "unauthenticated") {
-      console.error("[AUTH] No session found! Redirecting to login...")
-      router.push('/login')
-    } else if (status === "authenticated") {
-      console.log("[DEBUG] Auth.js Session found for:", session?.user?.email)
-      fetchTransactions()
+      router.push('/login');
+    } else if (status === "authenticated" && session?.accessToken) {
+      // We only fetch once we have a valid token
+      fetchTransactions();
     }
-  }, [status, router, session])
+  }, [status, session?.accessToken, router]);
+  // Added session?.accessToken to dependencies to re-run if token updates
 
   // Updated to support cursor-based pagination
   const fetchTransactions = async (cursor?: string) => {
@@ -221,13 +221,13 @@ export default function DashboardPage() {
                         </TableBody>
                       </Table>
                     </div>
-                    
+
                     {/* Load More Button */}
                     {nextCursor && (
                       <div className="flex justify-center">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={() => fetchTransactions(nextCursor)}
                           disabled={isLoadingMore}
                           className="text-gray-500"

@@ -4,9 +4,8 @@ import { authConfig } from "./auth.config"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
-  // 1. Add trustHost to fix the 'UntrustedHost' error
   trustHost: true, 
-  secret: process.env.NEXTAUTH_SECRET, 
+  secret: process.env.AUTH_SECRET, // Use AUTH_SECRET for v5 standard
   session: { strategy: "jwt" },
   providers: [
     Credentials({
@@ -25,6 +24,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const data = await res.json()
 
         if (res.ok && data.user) {
+          // The object returned here is passed to the 'jwt' callback as 'user'
           return {
             ...data.user,
             accessToken: data.token 
@@ -34,4 +34,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
     })
   ],
+  callbacks: {
+    async jwt({ token, user }) {
+      // 'user' is only available the first time a user signs in
+      if (user) {
+        token.accessToken = (user as any).accessToken;
+        token.organizationId = (user as any).organizationId;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      // Transfer data from the JWT token to the Session object
+      if (token) {
+        session.accessToken = token.accessToken as string;
+        (session.user as any).organizationId = token.organizationId;
+      }
+      return session;
+    },
+  },
 })
