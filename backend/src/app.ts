@@ -60,7 +60,7 @@ app.route('/api/auth', authRoutes)
 
 // '*' means apply to every single request, global configuration
 app.use('/api/transactions/*', authMiddleware) // protect all /transactions routes with auth
-// this line is optional and can be removed if already protected in the transactions route file inside each API
+// this line is optional and can be removed if authMiddleware is already present in the transactions route file inside each API
 
 // takes collection of routes from another file and attaches them to a prefix
 // keeps the main file clean and readable

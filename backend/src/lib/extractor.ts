@@ -34,32 +34,54 @@ export function extractTransaction(text: string): ExtractedTransaction {
     }
   }
 
-  // AMOUNT EXTRACTION (Prioritizes currency keywords)
+  // Logic Fix: Added [+-]? to capture signs and [,\d] to handle thousands separators
+
+  // AMOUNT EXTRACTION
   const amountPatterns = [
-    /(?:rs\.?|inr|amt|amount)\s*([\d,]+\.?\d*)/i,  // e.g., Rs. 500
-    /spent\s*([\d,]+\.?\d*)/i,                    // e.g., spent 500
-    /debited\s*(?:by|with)?\s*([\d,]+\.?\d*)/i    // e.g., debited by 500
+    /(?:rs\.?|inr|amt|amount)\s*:?\s*([+-]?[\d,]+\.?\d*)/i,
+    /([+-]?[\d,]+\.?\d*)\s*(?:debited|credited|spent)/i, // Logic: Handles "1,250.00 debited"
+    /(?:₹|rs\.?|inr)\s*([+-]?[\d,]+\.?\d*)/i,            // Logic: Handles "₹1,250.00"
+    /spent\s*([+-]?[\d,]+\.?\d*)/i
   ]
 
   for (const pattern of amountPatterns) {
     const match = rawText.match(pattern)
-    if (match) {
+    if (match && match[1]) {
       amount = parseFloat(match[1].replace(/,/g, ''))
       break
     }
   }
 
   // MERCHANT / DESCRIPTION EXTRACTION
-  const merchantMatch = rawText.match(/(?:paid to|at|to|vpa)\s+([^.\n]+?)(?:\s+on|\s+at|\s+using|\s+for|$)/i)
+  const merchantMatch = rawText.match(/Description:\s*([^]*?)(?=\n?\s*(?:Amount|Date|Balance|$))/i)
+
   if (merchantMatch) {
     description = merchantMatch[1].trim()
   } else {
-    // Fallback: Take the first line but clean it up
-    description = rawText.split('\n')[0].substring(0, 50).trim() + "..."
+    // Logic: Try to find a merchant between a Date and a Currency/Dr/Cr
+    const singleLineMatch = rawText.match(/(?:\d{4}-\d{2}-\d{2}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4})\s+(.*?)(?=\s*(?:₹|Rs\.?|INR|Dr|Cr|$))/i)
+
+    if (singleLineMatch && singleLineMatch[1] && singleLineMatch[1].trim() !== "→") {
+      description = singleLineMatch[1].replace(/→/g, '').trim()
+    } else {
+      // Fallback Logic: Take the very first line of the text
+      const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 0)
+      const firstLine = lines[0]
+
+      // If the first line isn't just a date, it's our Merchant (e.g., "Uber Ride * Airport Drop")
+      if (!firstLine.match(/^\d{1,2}[-/]\d{1,2}/)) {
+        description = firstLine
+      } else {
+        description = "Transaction" // Absolute fallback
+      }
+    }
   }
 
-  // BALANCE DETECTION
-  const balanceMatch = rawText.match(/(?:bal|balance|available|avl)\s*(?:is|:)?\s*[rs.]*\s*([\d,]+\.?\d*)/i)
+  // Cleanup: Remove any stray arrows or extra whitespace from the final description
+  description = description.replace(/→/g, '').replace(/\s+/g, ' ').trim()
+
+  // BALANCE DETECTION (Added "Available Balance" keyword)
+  const balanceMatch = rawText.match(/(?:bal|balance|available|avl)\s*(?:is|:)?\s*[rs.₹]*\s*([\d,]+\.?\d*)/i)
   if (balanceMatch) {
     balanceAfter = parseFloat(balanceMatch[1].replace(/,/g, ''))
   }
@@ -84,7 +106,7 @@ export function extractTransaction(text: string): ExtractedTransaction {
   let score = 0
 
   // Amount is most critical (40%)
-  if (amount > 0) score += 0.4
+  if (amount !== 0) score += 0.4
 
   // Merchant detection is key (30%)
   if (merchantMatch) score += 0.3
