@@ -1,7 +1,7 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "Vessify Finance Transaction Extractor Backend",
+  "description": "Finance Transaction Extractor Backend",
   "main": "src/index.ts",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -31,7 +31,6 @@
     "vitest": "^3.2.4"
   },
   "keywords": [
-    "vessify",
     "finance",
     "transactions",
     "backend"

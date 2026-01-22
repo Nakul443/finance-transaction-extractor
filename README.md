@@ -1,4 +1,4 @@
-# 🏦 Vessify - Financial Transaction Extractor
+# 🏦 Financial Transaction Extractor
 
 > A secure, multi-tenant financial transaction extraction platform that transforms raw bank SMS/statements into structured JSON data using intelligent regex-based parsing.
 
@@ -25,7 +25,7 @@
 
 ## 🎯 Overview
 
-Vessify is a production-ready financial transaction extraction system designed for multi-tenant environments. It securely processes bank statements and SMS notifications, extracting structured transaction data (amount, date, merchant, category) with confidence scoring. Built with enterprise-grade security practices, including JWT-based authentication and logical data isolation to ensure complete tenant separation.
+A production-ready financial transaction extraction system designed for multi-tenant environments. It securely processes bank statements and SMS notifications, extracting structured transaction data (amount, date, merchant, category) with confidence scoring. Built with enterprise-grade security practices, including JWT-based authentication and logical data isolation to ensure complete tenant separation.
 
 ### Key Capabilities
 
@@ -86,7 +86,7 @@ Vessify is a production-ready financial transaction extraction system designed f
 
 ### Multi-Tenant Data Isolation Strategy
 
-Vessify implements **Logical Isolation** using a unique `organizationId` per user. This ensures complete data separation at the database query level.
+Implements **Logical Isolation** using a unique `organizationId` per user. This ensures complete data separation at the database query level.
 
 #### How It Works
 
@@ -123,7 +123,7 @@ const transactions = await prisma.transaction.findMany({ where })
 
 ## 🔐 Authentication & Frontend Setup
 
-Vessify uses **Auth.js (NextAuth.js)** for frontend authentication, providing a seamless integration between the Next.js frontend and the Hono backend JWT system.
+Uses **Auth.js (NextAuth.js)** for frontend authentication, providing a seamless integration between the Next.js frontend and the Hono backend JWT system.
 
 ### Auth.js Configuration
 
@@ -641,7 +641,7 @@ Check server status.
 3. **Set up environment variables:**
    Create a `.env` file in the `backend` directory:
    ```env
-   DATABASE_URL="postgresql://user:password@localhost:5432/vessify_db"
+   DATABASE_URL="postgresql://user:password@localhost:5432/db"
    JWT_SECRET="your-super-secret-jwt-key-change-in-production"
    PORT=3001
    ```
@@ -720,7 +720,7 @@ Check server status.
 
 **Example `.env`:**
 ```env
-DATABASE_URL="postgresql://postgres:password@localhost:5432/vessify_db"
+DATABASE_URL="postgresql://postgres:password@localhost:5432/db"
 JWT_SECRET="your-super-secret-jwt-key-min-32-chars-recommended"
 PORT=3001
 ```
@@ -746,7 +746,7 @@ AUTH_SECRET=your-auth-secret-key-min-32-chars
 
 ## 🧪 Testing
 
-Vessify includes comprehensive test coverage for extraction logic and data isolation.
+Includes comprehensive test coverage for extraction logic and data isolation.
 
 ### Running Tests
 
