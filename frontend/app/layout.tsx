@@ -25,7 +25,7 @@ const fontClass = "font-sans"; // CSS class for fonts
 // describes for content of a webpage
 // metadata for all pages
 export const metadata: Metadata = {
-  title: "Vessify Finance Extractor",
+  title: "Finance Extractor",
   description: "Extract transactions from bank statements securely",
 };
 

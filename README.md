@@ -797,7 +797,7 @@ Test Files  1 passed (1)
 ## 📁 Project Structure
 
 ```
-Vessify-Assignment/
+Finance-Transaction-Extractor/
 ├── backend/
 │   ├── prisma/
 │   │   └── schema.prisma          # Database schema (User, Transaction models)

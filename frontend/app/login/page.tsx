@@ -74,7 +74,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle className="text-2xl">Login to Vessify</CardTitle>
+          <CardTitle className="text-2xl">Login</CardTitle>
           <CardDescription>Enter your credentials to access your dashboard</CardDescription>
         </CardHeader>
         <CardContent>

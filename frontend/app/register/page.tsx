@@ -47,7 +47,7 @@ export default function RegisterPage() {
                 toast.error("Account created but login failed. Please login manually.")
                 router.push('/login')
             } else {
-                toast.success('Welcome to Vessify!')
+                toast.success('Welcome!')
                 window.location.href = '/dashboard'
             }
         } catch (err: any) {
@@ -62,7 +62,7 @@ export default function RegisterPage() {
             <Card className="w-full max-w-md">
                 <CardHeader>
                     <CardTitle>Create Account</CardTitle>
-                    <CardDescription>Join Vessify to manage your transactions</CardDescription>
+                    <CardDescription>Join us to manage your transactions</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <Form {...form}>
