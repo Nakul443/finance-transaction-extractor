@@ -1,4 +1,8 @@
 // schema of what the output should look like
+
+import { openai } from "@ai-sdk/openai";
+import { embed } from "ai";
+
 export interface ExtractedTransaction {
   date: Date
   description: string
@@ -127,4 +131,20 @@ export function extractTransaction(text: string): ExtractedTransaction {
     category,
     rawText
   }
+}
+
+/**
+ * NEW: Converts the transaction description into a mathematical vector.
+ * This is used for Semantic Search in the chatbot.
+ */
+export async function getTransactionEmbedding(description: string, category: string): Promise<number[]> {
+  // We combine description and category to give the AI more context
+  const textToEmbed = `Transaction: ${description}. Category: ${category}`;
+
+  const { embedding } = await embed({
+    model: openai.embedding("text-embedding-3-small"),
+    value: textToEmbed,
+  });
+
+  return embedding;
 }

@@ -1,14 +1,19 @@
-// creates a prisma object used in routes
-// allows prisma.transaction.create()
+// 1. Generator: This creates the TypeScript code you use in your Node.js routes
 generator client {
   provider = "prisma-client-js"
+  // ENABLED: Support for pgvector and other postgres-specific features
+  previewFeatures = ["postgresqlExtensions"]
 }
 
+// 2. Datasource: Defines how to connect to your PostgreSQL DB
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  // ENABLED: Tells Prisma to allow the 'pgvector' extension in the database
+  extensions = [pgvector(map: "vector")]
 }
 
+// 3. User Model: Manages identity and ownership
 model User {
   id             String        @id @default(cuid())
   email          String        @unique
@@ -23,6 +28,7 @@ model User {
   @@index([email])
 }
 
+// 4. Transaction Model: The core of your app, now upgraded for AI
 model Transaction {
   id             String   @id @default(cuid())
   userId         String
@@ -32,16 +38,24 @@ model Transaction {
   amount         Decimal  @db.Decimal(10, 2)
   balanceAfter   Decimal? @db.Decimal(10, 2)
   category       String?
+  
+  // AI metadata fields
   confidence     Float    @default(1.0)
   rawText        String?
+  
+  // NEW: The Vector Embedding field
+  // Stores the "meaning" of the description as 1536 numbers
+  embedding      Unsupported("vector(1536)")?
+
   createdAt      DateTime @default(now())
 
+  // Relationships
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // INDEXES: Critical for the "Performance" and "Isolation" requirement
+  // Performance and Isolation Indexes
   @@index([userId])
   @@index([organizationId])
   @@index([date])
-  @@index([createdAt]) // Added for cursor-pagination performance
-  @@index([organizationId, date]) // Composite index for dashboard queries
+  @@index([createdAt])
+  @@index([organizationId, date])
 }
