@@ -2,6 +2,8 @@
 
 import { openai } from "@ai-sdk/openai";
 import { embed } from "ai";
+import { prisma } from "./db";
+import ollama from "ollama";
 
 export interface ExtractedTransaction {
   date: Date
@@ -137,14 +139,45 @@ export function extractTransaction(text: string): ExtractedTransaction {
  * NEW: Converts the transaction description into a mathematical vector.
  * This is used for Semantic Search in the chatbot.
  */
+// 1. Updated: Get Local Embeddings using Ollama
 export async function getTransactionEmbedding(description: string, category: string): Promise<number[]> {
-  // We combine description and category to give the AI more context
   const textToEmbed = `Transaction: ${description}. Category: ${category}`;
 
-  const { embedding } = await embed({
-    model: openai.embedding("text-embedding-3-small"),
-    value: textToEmbed,
+  const response = await ollama.embeddings({
+    model: 'nomic-embed-text', // A very popular, high-quality local embedding model
+    prompt: textToEmbed,
   });
 
-  return embedding;
+  return response.embedding;
+}
+
+/**
+ * NEW: Performs a semantic search in PostgreSQL using the vector <-> operator (Cosine Distance).
+ */
+export async function findRelevantTransactions(queryVector: number[], userId: string, limit: number = 5) {
+  // We use <=> for Cosine Distance (standard for OpenAI embeddings)
+  // This finds transactions that are "conceptually" similar to the user's question
+  return await prisma.$queryRaw`
+    SELECT id, description, amount, date, category 
+    FROM "Transaction" 
+    WHERE "userId" = ${userId}
+    ORDER BY embedding <=> ${queryVector}::vector
+    LIMIT ${limit}
+  `
+}
+
+// 2. Updated: Chatbot logic using Local LLM
+export async function getChatResponse(message: string, relevantData: any[]) {
+  const response = await ollama.chat({
+    model: 'llama3', // or 'mistral'
+    messages: [
+      { 
+        role: 'system', 
+        content: `You are a financial assistant. Use this data: ${JSON.stringify(relevantData)}` 
+      },
+      { role: 'user', content: message },
+    ],
+  });
+
+  return response.message.content;
 }

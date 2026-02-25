@@ -10,9 +10,10 @@ import { Hono } from 'hono'
 import { rateLimiter } from 'hono-rate-limiter'
 import { z } from 'zod' // validates incoming data
 import { prisma } from '../lib/db'
-import { extractTransaction, getTransactionEmbedding } from '../lib/extractor' // logic to read text & AI embedding
+import { extractTransaction, findRelevantTransactions, getTransactionEmbedding, getChatResponse } from '../lib/extractor' // logic to read text & AI embedding
 import { AuthenticatedUser } from '../middleware/auth'
 import { AppContext } from '../app'
+import ollama from 'ollama';
 
 // tells hono that every route in this file has access to the "backpack"
 const app = new Hono<AppContext>()
@@ -140,6 +141,36 @@ app.delete('/:id', async (c) => {
         return c.json({ message: 'Deleted successfully' })
     } catch (error) {
         return c.json({ error: 'Delete failed' }, 400)
+    }
+})
+
+// NEW: AI Agentic Chatbot Route
+// This route converts a user query into a vector, searches the DB, and summarizes the findings.
+app.post('/chat', async (c) => {
+    try {
+        const user = c.get('user') as AuthenticatedUser
+        const { message } = await c.req.json()
+
+        // 1. Get embedding for the user's question using local Ollama
+        const response = await ollama.embeddings({
+            model: 'nomic-embed-text',
+            prompt: message,
+        });
+        const queryVector = response.embedding;
+
+        // 2. Find relevant transactions from DB (Semantic Search)
+        const relevantData = await findRelevantTransactions(queryVector, user.id);
+
+        // 3. Get the final response from local Llama3
+        const reply = await getChatResponse(message, relevantData as any[]);
+
+        return c.json({ 
+            reply,
+            sources: relevantData 
+        })
+    } catch (error) {
+        console.error("Chat error:", error)
+        return c.json({ error: 'Local AI is offline. Ensure Ollama is running.' }, 500)
     }
 })
 
