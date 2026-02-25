@@ -9,7 +9,8 @@ import { transactionAPI } from '@/lib/api'
 import { toast } from 'sonner'
 import { Loader2, Trash2 } from 'lucide-react'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { useSession, signOut } from "next-auth/react" // Changed: added signOut
+import { useSession, signOut } from "next-auth/react"
+import { AIChat } from '@/components/ui/ai-chat' // NEW: Import the chat
 
 interface Transaction {
   id: string
@@ -45,7 +46,6 @@ export default function DashboardPage() {
       fetchTransactions();
     }
   }, [status, session?.accessToken, router]);
-  // Added session?.accessToken to dependencies to re-run if token updates
 
   // Updated to support cursor-based pagination
   const fetchTransactions = async (cursor?: string) => {
@@ -93,7 +93,6 @@ export default function DashboardPage() {
     }
   }
 
-  // Implementation for the delete function
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this transaction?")) return;
 
@@ -107,11 +106,9 @@ export default function DashboardPage() {
   }
 
   const handleLogout = () => {
-    // Auth.js sign out handles clearing cookies/session
     signOut({ callbackUrl: '/login' })
   }
 
-  // 3. THIS IS THE SCREEN YOU WERE STUCK ON (Handled by status)
   if (status === "loading") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center">
@@ -130,7 +127,6 @@ export default function DashboardPage() {
               Welcome, {session?.user?.name || 'User'}!
             </h1>
             <p className="text-gray-600 font-mono text-xs uppercase tracking-widest">
-              {/* Pulling org ID from Auth.js custom session token */}
               Org ID: {(session?.user as any)?.organizationId || 'Personal'}
             </p>
           </div>
@@ -138,8 +134,8 @@ export default function DashboardPage() {
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column: Input */}
-          <div className="lg:col-span-1">
+          {/* Left Column: AI Assistant & Input */}
+          <div className="lg:col-span-1 space-y-8">
             <Card>
               <CardHeader>
                 <CardTitle>Extract Transaction</CardTitle>
@@ -147,10 +143,10 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <Textarea
-                  placeholder="e.g., Paid Rs. 500 to Starbucks at 2:00 PM..."
+                  placeholder="e.g., Paid Rs. 500 to Starbucks..."
                   value={text}
                   onChange={(e) => setText(e.target.value)}
-                  rows={6}
+                  rows={4}
                   className="resize-none"
                 />
                 <Button onClick={handleExtract} disabled={isLoading} className="w-full">
@@ -158,11 +154,14 @@ export default function DashboardPage() {
                 </Button>
               </CardContent>
             </Card>
+
+            {/* AI Chatbox is now live! */}
+            <AIChat />
           </div>
 
           {/* Right Column: List */}
           <div className="lg:col-span-2">
-            <Card>
+            <Card className="h-full">
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>History</CardTitle>
                 <span className="text-xs text-gray-400">{transactions.length} items loaded</span>
@@ -186,7 +185,7 @@ export default function DashboardPage() {
                         <TableBody>
                           {transactions.length === 0 ? (
                             <TableRow>
-                              <TableCell colSpan={5} className="h-24 text-center">
+                              <TableCell colSpan={5} className="h-24 text-center text-gray-500">
                                 No transactions found.
                               </TableCell>
                             </TableRow>
@@ -222,7 +221,6 @@ export default function DashboardPage() {
                       </Table>
                     </div>
 
-                    {/* Load More Button */}
                     {nextCursor && (
                       <div className="flex justify-center">
                         <Button

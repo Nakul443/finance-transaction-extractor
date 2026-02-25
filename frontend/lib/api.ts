@@ -53,6 +53,10 @@ export const authAPI = {
 }
 
 export const transactionAPI = {
+    // NEW: Chat with the AI Agent
+    chat: (message: string) => 
+        api.post('/api/transactions/chat', { message }),
+
     extract: (text: string) =>
         api.post('/api/transactions/extract', { text }),
 
