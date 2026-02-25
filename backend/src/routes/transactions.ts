@@ -10,7 +10,7 @@ import { Hono } from 'hono'
 import { rateLimiter } from 'hono-rate-limiter'
 import { z } from 'zod' // validates incoming data
 import { prisma } from '../lib/db'
-import { extractTransaction } from '../lib/extractor' // custom logic to read text
+import { extractTransaction, getTransactionEmbedding } from '../lib/extractor' // logic to read text & AI embedding
 import { AuthenticatedUser } from '../middleware/auth'
 import { AppContext } from '../app'
 
@@ -47,23 +47,40 @@ app.post('/extract', ExtractionLimiter, async (c) => {
         // extract data using the 'extractor' logic
         const extracted = extractTransaction(text)
 
+        // NEW: Generate AI vector embedding for the chatbot to "understand" this transaction
+        const vector = await getTransactionEmbedding(extracted.description, extracted.category || 'Other')
+
         // save transaction to the PostgreSQL database using prisma
-        const transaction = await prisma.transaction.create({
-            data: {
-                amount: extracted.amount,
-                date: extracted.date,
-                description: extracted.description,
-                category: extracted.category || 'Uncategorized',
-                confidence: extracted.confidence,
-                rawText: text, // Save the actual raw text
-                balanceAfter: extracted.balanceAfter,
-                userId: user.id,
-                organizationId: user.organizationId
-            }
+        // Logic Update: Using $transaction to ensure both the record and the AI vector are saved
+        const transaction = await prisma.$transaction(async (tx) => {
+            // Create the record first
+            const record = await tx.transaction.create({
+                data: {
+                    amount: extracted.amount,
+                    date: extracted.date,
+                    description: extracted.description,
+                    category: extracted.category || 'Uncategorized',
+                    confidence: extracted.confidence,
+                    rawText: text, // Save the actual raw text
+                    balanceAfter: extracted.balanceAfter,
+                    userId: user.id,
+                    organizationId: user.organizationId
+                }
+            })
+
+            // Logic: Use Raw SQL to save the vector because Prisma doesn't support the 'vector' type natively
+            await tx.$executeRaw`
+                UPDATE "Transaction"
+                SET embedding = ${vector}::vector
+                WHERE id = ${record.id}
+            `
+
+            return record
         })
 
         return c.json({ message: 'Transaction saved', transaction }, 201)
     } catch (error) {
+        console.error(error) // Helpful for debugging AI connection issues
         return c.json({ error: 'Failed to process transaction' }, 500)
     }
 })
