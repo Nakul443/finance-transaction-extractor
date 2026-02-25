@@ -1,16 +1,17 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { transactionAPI } from '@/lib/api'
 import { toast } from 'sonner'
-import { Loader2, Trash2 } from 'lucide-react'
+import { Loader2, Trash2, BarChart3 } from 'lucide-react'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useSession, signOut } from "next-auth/react"
-import { AIChat } from '@/components/ui/ai-chat' // NEW: Import the chat
+import { AIChat } from '@/components/ui/ai-chat'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 
 interface Transaction {
   id: string
@@ -23,53 +24,52 @@ interface Transaction {
   createdAt: string
 }
 
+const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+
 export default function DashboardPage() {
   const router = useRouter()
-  // Auth.js session hook
   const { data: session, status } = useSession()
 
   const [text, setText] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(false)
-
-  // NEW: Pagination State
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
 
-  // 1. Updated Effect: Fires only when auth is confirmed and token is present
+  const chartData = useMemo(() => {
+    const categories: Record<string, number> = {}
+    transactions.forEach(t => {
+      const cat = t.category || 'Other'
+      categories[cat] = (categories[cat] || 0) + t.amount
+    })
+    return Object.entries(categories).map(([name, total]) => ({ name, total }))
+  }, [transactions])
+
   useEffect(() => {
     if (status === "unauthenticated") {
       router.push('/login');
     } else if (status === "authenticated" && session?.accessToken) {
-      // We only fetch once we have a valid token
       fetchTransactions();
     }
   }, [status, session?.accessToken, router]);
 
-  // Updated to support cursor-based pagination
   const fetchTransactions = async (cursor?: string) => {
     if (cursor) setIsLoadingMore(true);
     else setIsLoadingTransactions(true);
 
     try {
-      // API call with limit and cursor
       const response = await transactionAPI.list(10, cursor);
-
       const newTransactions = response.data.transactions;
-
       if (cursor) {
-        // If loading more, append to existing list
         setTransactions(prev => [...prev, ...newTransactions]);
       } else {
-        // Initial load
         setTransactions(newTransactions);
       }
-
       setNextCursor(response.data.nextCursor);
     } catch (error) {
       console.error('Fetch error:', error)
-      toast.error('Failed to load transactions. Check your backend connection.')
+      toast.error('Failed to load transactions.')
     } finally {
       setIsLoadingTransactions(false)
       setIsLoadingMore(false)
@@ -81,39 +81,33 @@ export default function DashboardPage() {
     setIsLoading(true)
     try {
       const response = await transactionAPI.extract(text)
-      // Add new transaction to the TOP of the list immediately
       setTransactions([response.data.transaction, ...transactions])
       setText('')
       toast.success('Transaction saved!')
     } catch (error: any) {
-      const errorMsg = error.response?.data?.error || 'Extraction failed';
-      toast.error(errorMsg)
+      toast.error(error.response?.data?.error || 'Extraction failed')
     } finally {
       setIsLoading(false)
     }
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this transaction?")) return;
-
+    if (!confirm("Are you sure?")) return;
     try {
       await transactionAPI.delete(id);
       setTransactions(transactions.filter(t => t.id !== id));
-      toast.success("Transaction deleted");
+      toast.success("Deleted");
     } catch (error) {
-      toast.error("Failed to delete transaction");
+      toast.error("Delete failed");
     }
   }
 
-  const handleLogout = () => {
-    signOut({ callbackUrl: '/login' })
-  }
+  const handleLogout = () => signOut({ callbackUrl: '/login' })
 
   if (status === "loading") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center">
         <Loader2 className="h-10 w-10 animate-spin text-blue-600" />
-        <p className="mt-4 text-gray-500">Securing your session...</p>
       </div>
     )
   }
@@ -123,9 +117,7 @@ export default function DashboardPage() {
       <div className="max-w-6xl mx-auto">
         <header className="mb-8 flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              Welcome, {session?.user?.name || 'User'}!
-            </h1>
+            <h1 className="text-3xl font-bold text-gray-900">Welcome, {session?.user?.name || 'User'}!</h1>
             <p className="text-gray-600 font-mono text-xs uppercase tracking-widest">
               Org ID: {(session?.user as any)?.organizationId || 'Personal'}
             </p>
@@ -133,8 +125,63 @@ export default function DashboardPage() {
           <Button variant="outline" onClick={handleLogout}>Logout</Button>
         </header>
 
+        <Card className="mb-8">
+          <CardHeader className="flex flex-row items-center gap-2">
+            <BarChart3 className="h-5 w-5 text-blue-600" />
+            <CardTitle>Spending Overview</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[300px] w-full">
+              {transactions.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <XAxis 
+                      dataKey="name" 
+                      axisLine={false} 
+                      tickLine={false} 
+                      fontSize={12} 
+                      tick={{ fill: '#6b7280' }}
+                      dy={10}
+                    />
+                    <YAxis 
+                      axisLine={false} 
+                      tickLine={false} 
+                      fontSize={12} 
+                      tick={{ fill: '#6b7280' }}
+                      tickFormatter={(value) => `₹${value}`} 
+                    />
+                    <Tooltip 
+                      cursor={{ fill: '#f3f4f6' }}
+                      // FIX: The value can be string, number, or undefined. 
+                      // Using a broad type for the formatter function to satisfy the Recharts interface.
+                      formatter={(value: any) => {
+                        const amount = Number(value || 0);
+                        return [`₹${amount.toLocaleString()}`, 'Total Spent'];
+                      }}
+                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                    />
+                    <Bar 
+                      dataKey="total" 
+                      radius={[6, 6, 0, 0]} 
+                      barSize={40}
+                    >
+                      {chartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center text-gray-400">
+                  Add transactions to see your spending visualization.
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column: AI Assistant & Input */}
           <div className="lg:col-span-1 space-y-8">
             <Card>
               <CardHeader>
@@ -154,12 +201,9 @@ export default function DashboardPage() {
                 </Button>
               </CardContent>
             </Card>
-
-            {/* AI Chatbox is now live! */}
             <AIChat />
           </div>
 
-          {/* Right Column: List */}
           <div className="lg:col-span-2">
             <Card className="h-full">
               <CardHeader className="flex flex-row items-center justify-between">
@@ -171,7 +215,7 @@ export default function DashboardPage() {
                   <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-gray-300" /></div>
                 ) : (
                   <div className="space-y-4">
-                    <div className="rounded-md border bg-white">
+                    <div className="rounded-md border bg-white overflow-hidden">
                       <Table>
                         <TableHeader>
                           <TableRow>
@@ -205,12 +249,7 @@ export default function DashboardPage() {
                                   ₹{t.amount.toLocaleString()}
                                 </TableCell>
                                 <TableCell>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-red-400 hover:text-red-600"
-                                    onClick={() => handleDelete(t.id)}
-                                  >
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-red-400 hover:text-red-600" onClick={() => handleDelete(t.id)}>
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
                                 </TableCell>
@@ -220,17 +259,10 @@ export default function DashboardPage() {
                         </TableBody>
                       </Table>
                     </div>
-
                     {nextCursor && (
                       <div className="flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => fetchTransactions(nextCursor)}
-                          disabled={isLoadingMore}
-                          className="text-gray-500"
-                        >
-                          {isLoadingMore ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Load more transactions'}
+                        <Button variant="ghost" size="sm" onClick={() => fetchTransactions(nextCursor)} disabled={isLoadingMore} className="text-gray-500">
+                          {isLoadingMore ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Load more'}
                         </Button>
                       </div>
                     )}
