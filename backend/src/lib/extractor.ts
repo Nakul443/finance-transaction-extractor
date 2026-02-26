@@ -173,10 +173,17 @@ export async function getChatResponse(message: string, relevantData: any[]) {
     messages: [
       { 
         role: 'system', 
-        content: `You are a financial assistant. Use this data: ${JSON.stringify(relevantData)}` 
+        content: `You are a concise financial assistant. Answer questions based ONLY on this JSON data: ${JSON.stringify(relevantData)}. If no data is found, say you don't have those records.` 
       },
       { role: 'user', content: message },
     ],
+    // Speed optimization: Stop the model from "rambling"
+    options: {
+      temperature: 0,      // Makes responses predictable and faster
+      num_predict: 150,   // Limits the length of the response to save processing time
+      top_k: 20,          // Limits vocabulary search space
+      top_p: 0.9          // Nucleus sampling for efficiency
+    }
   });
 
   return response.message.content;

@@ -3,378 +3,301 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { transactionAPI } from "@/lib/api";
 import { toast } from "sonner";
-import { Loader2, Trash2, BarChart3 } from "lucide-react";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { 
+  Loader2, Trash2, BarChart3, TrendingUp, TrendingDown, 
+  Wallet, Download, RefreshCcw, Search, PieChart as PieChartIcon,
+  Moon, Sun, Edit2, Check, X, AlertTriangle, FilterX
+} from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useSession, signOut } from "next-auth/react";
 import { AIChat } from "@/components/ui/ai-chat";
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
+  ResponsiveContainer, Legend, PieChart, Pie, Cell
 } from "recharts";
 import { BulkUpload } from "@/components/ui/bulk-upload";
 
-interface Transaction {
-  id: string;
-  date: string;
-  description: string;
-  amount: number;
-  category?: string;
-  confidence: number;
-  balanceAfter?: number;
-  createdAt: string;
-}
+const PIE_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#f43f5e"];
 
-const COLORS = [
-  "#3b82f6",
-  "#10b981",
-  "#f59e0b",
-  "#ef4444",
-  "#8b5cf6",
-  "#ec4899",
+// Expanded Categories
+const CATEGORIES = [
+  "Food & Dining", "Shopping", "Rent & Bills", "Transport", 
+  "Entertainment", "Health", "Investment", "Salary", "Other"
 ];
+
+interface Transaction {
+  id: string; 
+  date: string; 
+  description: string; 
+  amount: number; 
+  category?: string;
+}
 
 export default function DashboardPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
 
+  const [isDark, setIsDark] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
   const [text, setText] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [dateFilter, setDateFilter] = useState<"all" | "month" | "30days">("all");
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-
-  // FIX: Force strictly numeric aggregation to avoid large/weird string values
-  const chartData = useMemo(() => {
-    const categories: Record<string, number> = {};
-    transactions.forEach((t) => {
-      const cat = t.category || "Other";
-      const val = typeof t.amount === "string" ? parseFloat(t.amount) : t.amount;
-      categories[cat] = (categories[cat] || 0) + (isNaN(val) ? 0 : val);
-    });
-    return Object.entries(categories).map(([name, total]) => ({ name, total }));
-  }, [transactions]);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    if (status === "unauthenticated") {
-      router.push("/login");
-    } else if (status === "authenticated" && session?.accessToken) {
-      fetchTransactions();
+    const savedTheme = localStorage.getItem("theme");
+    if (savedTheme === "dark") setIsDark(true);
+  }, []);
+
+  useEffect(() => {
+    if (isDark) {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("theme", "dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("theme", "light");
     }
-  }, [status, session?.accessToken, router]);
+  }, [isDark]);
 
-  const fetchTransactions = async (cursor?: string) => {
-    if (cursor) setIsLoadingMore(true);
-    else setIsLoadingTransactions(true);
+  const isIncome = (desc: string) => desc.toLowerCase().match(/salary|refund|credited|received|deposit/);
 
-    try {
-      const response = await transactionAPI.list(10, cursor);
-      const newTransactions = response.data.transactions;
-      if (cursor) {
-        setTransactions((prev) => [...prev, ...newTransactions]);
+  // Advanced Filter Logic
+  const filteredData = useMemo(() => {
+    return transactions.filter((t) => {
+      const matchesSearch = t.description.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                            (t.category || "").toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesCategory = selectedCategory ? t.category === selectedCategory : true;
+      
+      if (!matchesSearch || !matchesCategory) return false;
+      if (dateFilter === "all") return true;
+
+      const tDate = new Date(t.date);
+      const now = new Date();
+      if (dateFilter === "month") return tDate.getMonth() === now.getMonth() && tDate.getFullYear() === now.getFullYear();
+      if (dateFilter === "30days") return (now.getTime() - tDate.getTime()) / (1000 * 3600 * 24) <= 30;
+      return true;
+    });
+  }, [transactions, searchQuery, dateFilter, selectedCategory]);
+
+  const { barData, pieData, stats, budgetAlert } = useMemo(() => {
+    const categoryTotals: Record<string, { income: number; expense: number }> = {};
+    let inc = 0; let exp = 0;
+
+    filteredData.forEach((t) => {
+      const catName = t.category || "Other";
+      if (!categoryTotals[catName]) categoryTotals[catName] = { income: 0, expense: 0 };
+      const val = parseFloat(t.amount.toString()) || 0;
+      if (isIncome(t.description)) {
+        categoryTotals[catName].income += val;
+        inc += val;
       } else {
-        setTransactions(newTransactions);
+        categoryTotals[catName].expense += val;
+        exp += val;
       }
-      setNextCursor(response.data.nextCursor);
-    } catch (error) {
-      console.error("Fetch error:", error);
-      toast.error("Failed to load transactions.");
-    } finally {
-      setIsLoadingTransactions(false);
-      setIsLoadingMore(false);
-    }
-  };
+    });
 
-  const handleExtract = async () => {
-    if (!text.trim()) return;
+    const bar = Object.entries(categoryTotals).map(([name, d]) => ({
+      name,
+      income: Number(d.income.toFixed(2)),
+      expense: Number(d.expense.toFixed(2))
+    }));
+
+    const pie = Object.entries(categoryTotals)
+      .filter(([_, d]) => d.expense > 0)
+      .map(([name, d]) => ({ name, value: Number(d.expense.toFixed(2)) }));
+
+    const ratio = inc > 0 ? (exp / inc) : 0;
+    const alert = ratio > 0.8 ? `Warning: Spending is at ${(ratio * 100).toFixed(0)}% of income.` : null;
+
+    return { barData: bar, pieData: pie, stats: { inc, exp, net: inc - exp }, budgetAlert: alert };
+  }, [filteredData]);
+
+  const fetchTransactions = async () => {
     setIsLoading(true);
     try {
-      const response = await transactionAPI.extract(text);
-      setTransactions([response.data.transaction, ...transactions]);
-      setText("");
-      toast.success("Transaction saved!");
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || "Extraction failed");
-    } finally {
-      setIsLoading(false);
-    }
+      const res = await transactionAPI.list(100);
+      setTransactions(res.data.transactions);
+    } catch (e) { console.error(e); } 
+    finally { setIsLoading(false); }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure?")) return;
-    try {
-      await transactionAPI.delete(id);
-      setTransactions(transactions.filter((t) => t.id !== id));
-      toast.success("Deleted");
-    } catch (error) {
-      toast.error("Delete failed");
-    }
+  useEffect(() => { if (status === "authenticated") fetchTransactions(); }, [status]);
+
+  const handleUpdateCategory = (id: string) => {
+    setTransactions(transactions.map(t => t.id === id ? { ...t, category: editValue } : t));
+    setEditingId(null);
+    toast.success("Category updated");
   };
 
-  const handleLogout = () => signOut({ callbackUrl: "/login" });
-
-  if (status === "loading") {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center">
-        <Loader2 className="h-10 w-10 animate-spin text-blue-600" />
-      </div>
-    );
-  }
+  if (status === "loading") return <div className="min-h-screen flex items-center justify-center dark:bg-slate-950"><Loader2 className="animate-spin" /></div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-6xl mx-auto">
-        <header className="mb-8 flex justify-between items-center">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors p-4 md:p-8">
+      <div className="max-w-7xl mx-auto">
+        
+        {/* HEADER */}
+        <header className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              Welcome, {session?.user?.name || "User"}!
-            </h1>
-            <p className="text-gray-600 font-mono text-xs uppercase tracking-widest">
-              Org ID: {(session?.user as any)?.organizationId || "Personal"}
-            </p>
+            <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-blue-600 to-emerald-500 bg-clip-text text-transparent">FinanceFlow Pro</h1>
+            <p className="text-slate-500 dark:text-slate-400">Secure Dashboard • {session?.user?.name}</p>
           </div>
-          <Button variant="outline" onClick={handleLogout}>
-            Logout
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={() => setIsDark(!isDark)} className="rounded-full">
+              {isDark ? <Sun className="h-5 w-5 text-amber-400" /> : <Moon className="h-5 w-5 text-slate-600" />}
+            </Button>
+            <Button variant="outline" className="dark:border-slate-800 rounded-full" onClick={() => signOut()}>Logout</Button>
+          </div>
         </header>
 
-        <Card className="mb-8">
-          <CardHeader className="flex flex-row items-center gap-2">
-            <BarChart3 className="h-5 w-5 text-blue-600" />
-            <CardTitle>Spending Overview</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[300px] w-full">
-              {transactions.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={chartData}
-                    margin={{ top: 20, right: 30, left: 60, bottom: 20 }} // Increased left margin
-                  >
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      vertical={false}
-                      stroke="#f0f0f0"
-                    />
-                    <XAxis
-                      dataKey="name"
-                      axisLine={false}
-                      tickLine={false}
-                      fontSize={12}
-                      tick={{ fill: "#6b7280" }}
-                      dy={10}
-                    />
-                    <YAxis
-                      axisLine={false}
-                      tickLine={false}
-                      fontSize={11}
-                      tick={{ fill: "#6b7280" }}
-                      // FIX: Formatting for large numbers (Billion/Million/Kilo)
-                      tickFormatter={(value) => {
-                        if (value >= 1000000000) return `₹${(value / 1000000000).toFixed(1)}B`;
-                        if (value >= 1000000) return `₹${(value / 1000000).toFixed(1)}M`;
-                        if (value >= 1000) return `₹${(value / 1000).toFixed(0)}K`;
-                        return `₹${value}`;
-                      }}
-                    />
-                    <Tooltip
-                      cursor={{ fill: "#f3f4f6" }}
-                      formatter={(value: any) => {
-                        const amount = Number(value || 0);
-                        return [
-                          `₹${amount.toLocaleString("en-IN")}`,
-                          "Total Spent",
-                        ];
-                      }}
-                      contentStyle={{
-                        borderRadius: "12px",
-                        border: "none",
-                        boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)",
-                      }}
-                    />
-                    <Bar
-                      dataKey="total"
-                      radius={[6, 6, 0, 0]}
-                      barSize={45} // Fixed bar width
-                    >
-                      {chartData.map((entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={COLORS[index % COLORS.length]}
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex h-full items-center justify-center text-gray-400">
-                  Add transactions to see your spending visualization.
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+        {/* TOP STATS */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <Card className="dark:bg-slate-900 border-none shadow-sm ring-1 ring-slate-200 dark:ring-slate-800">
+            <CardContent className="pt-6">
+                <div className="flex justify-between items-center mb-1 text-slate-500 text-sm">Income <TrendingUp className="text-emerald-500 h-4 w-4" /></div>
+                <p className="text-2xl font-bold text-emerald-600">₹{stats.inc.toLocaleString()}</p>
+            </CardContent>
+          </Card>
+          <Card className="dark:bg-slate-900 border-none shadow-sm ring-1 ring-slate-200 dark:ring-slate-800">
+            <CardContent className="pt-6">
+                <div className="flex justify-between items-center mb-1 text-slate-500 text-sm">Expenses <TrendingDown className="text-red-500 h-4 w-4" /></div>
+                <p className="text-2xl font-bold text-red-600">₹{stats.exp.toLocaleString()}</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-slate-900 dark:bg-blue-600 text-white border-none shadow-lg">
+            <CardContent className="pt-6">
+                <div className="flex justify-between items-center mb-1 opacity-80 text-sm">Net Balance <Wallet className="h-4 w-4" /></div>
+                <p className="text-2xl font-bold">₹{stats.net.toLocaleString()}</p>
+            </CardContent>
+          </Card>
+        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-1 space-y-8">
-            <Card>
-              <CardHeader>
-                <CardTitle>Extract Transaction</CardTitle>
-                <CardDescription>
-                  Paste raw bank SMS or email text
-                </CardDescription>
-              </CardHeader>
+        {/* ANALYTICS ROW */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-8">
+          <Card className="lg:col-span-8 dark:bg-slate-900 border-none ring-1 ring-slate-200 dark:ring-slate-800">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2"><BarChart3 className="h-4 w-4 text-blue-500" /> Spending Overview</CardTitle>
+              {budgetAlert && <span className="text-xs font-bold text-amber-500 flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> {budgetAlert}</span>}
+            </CardHeader>
+            <CardContent className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={barData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? "#1e293b" : "#f1f5f9"} />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: isDark ? '#94a3b8' : '#64748b', fontSize: 10}} />
+                  <YAxis axisLine={false} tickLine={false} tick={{fill: isDark ? '#94a3b8' : '#64748b', fontSize: 10}} tickFormatter={(v) => `₹${v}`} />
+                  <Tooltip cursor={{fill: isDark ? '#1e293b' : '#f8fafc'}} contentStyle={{ borderRadius: '12px', border: 'none', backgroundColor: isDark ? '#0f172a' : '#fff', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                  <Legend verticalAlign="top" align="right" iconType="circle" />
+                  <Bar dataKey="income" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20} name="Income" />
+                  <Bar dataKey="expense" fill="#ef4444" radius={[4, 4, 0, 0]} barSize={20} name="Expense" />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-4 dark:bg-slate-900 border-none ring-1 ring-slate-200 dark:ring-slate-800">
+            <CardHeader><CardTitle className="text-lg flex items-center gap-2"><PieChartIcon className="h-4 w-4 text-purple-500" /> Expense Split</CardTitle></CardHeader>
+            <CardContent className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={pieData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                    {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* TRANSACTIONS SECTION */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <div className="lg:col-span-4 space-y-6">
+            <Card className="dark:bg-slate-900 border-none ring-1 ring-slate-200 dark:ring-slate-800">
+              <CardHeader><CardTitle className="text-lg">Add Data</CardTitle></CardHeader>
               <CardContent className="space-y-4">
-                <Textarea
-                  placeholder="e.g., Paid Rs. 500 to Starbucks..."
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  rows={4}
-                  className="resize-none"
-                />
-                <Button
-                  onClick={handleExtract}
-                  disabled={isLoading}
-                  className="w-full"
-                >
-                  {isLoading ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    "Process Text"
-                  )}
-                </Button>
-
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t" />
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-white px-2 text-gray-400">Or</span>
-                  </div>
-                </div>
-
-                <BulkUpload
-                  onSuccess={(newT) =>
-                    setTransactions((prev) => [newT, ...prev])
-                  }
-                />
+                <Textarea placeholder="Paste bank SMS here..." value={text} onChange={(e) => setText(e.target.value)} className="dark:bg-slate-800 border-none min-h-[100px] focus-visible:ring-blue-500" />
+                <Button className="w-full bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-500/20">Extract with AI</Button>
+                <BulkUpload onSuccess={(t) => setTransactions([t, ...transactions])} />
               </CardContent>
             </Card>
             <AIChat />
           </div>
 
-          <div className="lg:col-span-2">
-            <Card className="h-full">
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>History</CardTitle>
-                <span className="text-xs text-gray-400">
-                  {transactions.length} items loaded
-                </span>
+          <div className="lg:col-span-8">
+            <Card className="dark:bg-slate-900 border-none ring-1 ring-slate-200 dark:ring-slate-800">
+              <CardHeader className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-2 flex-1">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                    <Input placeholder="Search..." className="pl-9 dark:bg-slate-800 border-none h-10" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                  </div>
+                  {selectedCategory && (
+                    <Button variant="secondary" size="sm" onClick={() => setSelectedCategory(null)} className="h-10 gap-2"><FilterX className="h-4 w-4" /> {selectedCategory}</Button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value as any)} className="h-10 px-3 text-sm rounded-md bg-white dark:bg-slate-800 border-none ring-1 ring-slate-200 dark:ring-slate-700">
+                    <option value="all">All Time</option>
+                    <option value="month">This Month</option>
+                    <option value="30days">Last 30 Days</option>
+                  </select>
+                  <Button variant="outline" size="icon" className="text-red-500 h-10 w-10 border-none ring-1 ring-red-100 dark:ring-red-900" onClick={() => { if(window.confirm("Clear?")) setTransactions([]) }}><RefreshCcw className="h-4 w-4" /></Button>
+                </div>
               </CardHeader>
-              <CardContent>
-                {isLoadingTransactions ? (
-                  <div className="flex justify-center py-20">
-                    <Loader2 className="h-8 w-8 animate-spin text-gray-300" />
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="rounded-md border bg-white overflow-hidden">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Date</TableHead>
-                            <TableHead>Description</TableHead>
-                            <TableHead>Category</TableHead>
-                            <TableHead className="text-right">Amount</TableHead>
-                            <TableHead></TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {transactions.length === 0 ? (
-                            <TableRow>
-                              <TableCell
-                                colSpan={5}
-                                className="h-24 text-center text-gray-500"
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
+                    <TableRow>
+                      <TableHead className="text-[10px] uppercase font-bold text-slate-400">Date</TableHead>
+                      <TableHead className="text-[10px] uppercase font-bold text-slate-400">Description</TableHead>
+                      <TableHead className="text-[10px] uppercase font-bold text-slate-400">Category</TableHead>
+                      <TableHead className="text-right text-[10px] uppercase font-bold text-slate-400">Amount</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredData.map((t) => {
+                      const isInc = isIncome(t.description);
+                      return (
+                        <TableRow key={t.id} className="border-slate-100 dark:border-slate-800/50 hover:bg-slate-100/20 dark:hover:bg-slate-800/30 transition-colors">
+                          <TableCell className="text-[11px] text-slate-500">{new Date(t.date).toLocaleDateString()}</TableCell>
+                          <TableCell className="font-medium text-sm max-w-[200px] truncate">{t.description}</TableCell>
+                          <TableCell>
+                            {editingId === t.id ? (
+                              <select 
+                                value={editValue} 
+                                onChange={(e) => handleUpdateCategory(t.id)} 
+                                onBlur={() => setEditingId(null)}
+                                className="text-xs p-1 rounded bg-slate-100 dark:bg-slate-800"
+                                autoFocus
                               >
-                                No transactions found.
-                              </TableCell>
-                            </TableRow>
-                          ) : (
-                            transactions.map((t) => (
-                              <TableRow key={t.id}>
-                                <TableCell className="text-xs text-gray-500">
-                                  {new Date(t.date).toLocaleDateString()}
-                                </TableCell>
-                                <TableCell className="font-medium">
-                                  {t.description}
-                                </TableCell>
-                                <TableCell>
-                                  <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[10px] font-bold uppercase">
-                                    {t.category || "Other"}
-                                  </span>
-                                </TableCell>
-                                <TableCell className="text-right font-mono font-bold">
-                                  ₹{Number(t.amount).toLocaleString("en-IN")}
-                                </TableCell>
-                                <TableCell>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-red-400 hover:text-red-600"
-                                    onClick={() => handleDelete(t.id)}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </TableCell>
-                              </TableRow>
-                            ))
-                          )}
-                        </TableBody>
-                      </Table>
-                    </div>
-                    {nextCursor && (
-                      <div className="flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => fetchTransactions(nextCursor)}
-                          disabled={isLoadingMore}
-                          className="text-gray-500"
-                        >
-                          {isLoadingMore ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          ) : (
-                            "Load more"
-                          )}
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </CardContent>
+                                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                              </select>
+                            ) : (
+                              <button 
+                                onClick={() => setSelectedCategory(t.category || "Other")}
+                                onDoubleClick={() => { setEditingId(t.id); setEditValue(t.category || "Other"); }}
+                                className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold uppercase hover:bg-blue-100 transition-colors"
+                              >
+                                {t.category || "Other"}
+                              </button>
+                            )}
+                          </TableCell>
+                          <TableCell className={`text-right font-mono font-bold ${isInc ? 'text-emerald-600' : 'text-slate-900 dark:text-slate-100'}`}>
+                            {isInc ? '+' : ''}₹{t.amount.toLocaleString()}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
             </Card>
           </div>
         </div>

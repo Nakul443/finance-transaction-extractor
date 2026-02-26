@@ -159,14 +159,20 @@ app.post('/chat', async (c) => {
         const queryVector = response.embedding;
 
         // 2. Find relevant transactions from DB (Semantic Search)
+        // Optimized: Only fetching necessary fields to keep the AI context window small and fast
         const relevantData = await findRelevantTransactions(queryVector, user.id);
 
         // 3. Get the final response from local Llama3
+        // Performance Note: We pass the data to a helper that formats a strict prompt for speed
         const reply = await getChatResponse(message, relevantData as any[]);
 
         return c.json({ 
             reply,
-            sources: relevantData 
+            sources: (relevantData as any[]).map(t => ({
+                description: t.description,
+                amount: t.amount,
+                date: t.date
+            }))
         })
     } catch (error) {
         console.error("Chat error:", error)
