@@ -1,29 +1,9 @@
-// all API routes are defined in this file
-// eg: /login, /transactions
-// brain that decides how to respond to requests
-
-// 1.
-// gathers pieces of logic (like authRoutes, transactionRoutes)
-// and maps them to specific URL paths (like /api/auth)
-
-// 2.
-// authMiddleware checks if a user is logged in before letting them see transactions
-
-
-// request arrives -> CORS layer checks if the request is from http://localhost:3000 (proceeds, if yes)
-// -> server looks at the URL and matches the API pattern -> auth middleware performs check -> if valid
-// -> middleware puts data into AppContext backpack -> uses the API -> response sent to user
-
 import { Hono } from 'hono'
-import { cors } from 'hono/cors' // CORS middleware, allows web apps from other domains to access our API
-import { authRoutes } from './routes/auth' // authentication routes
+import { cors } from 'hono/cors'
+import { authRoutes } from './routes/auth'
 import { authMiddleware } from './middleware/auth'
 import { transactionRoutes } from './routes/transactions'
 
-// allows to store data at an early stage and carry it forward to a later stage
-// "shared backpack" for a single request
-// unique to each specific request
-// user A will have his own backpack and user B his own
 export type AppContext = {
     Variables: {
         user: any
@@ -32,47 +12,28 @@ export type AppContext = {
 
 const app = new Hono<AppContext>()
 
-
-// enabling CORS
+// 1. TYPE-SAFE DYNAMIC CORS
 app.use('*', cors({
-    origin: ['http://localhost:3000'],
-    credentials: true,
+  origin: (origin) => origin, // This effectively allows "all" origins dynamically
+  credentials: true,
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization', 'x-organization-id'],
+  exposeHeaders: ['Content-Length', 'X-Kuma-Revision'],
+  maxAge: 600,
 }))
 
-// test routes
+// 2. FIXED OPTIONS HANDLER
+// Using c.body(null, 204) fixes the "Argument of type 204 is not assignable" error
+app.options('*', (c) => c.body(null, 204))
 
-// route when someone visits the root URL ('/')
-app.get('/', (c) => {
-    // (c) is context, contains request and response info
-    return c.text('Hello, World!')
-})
+// 3. BASE ROUTES
+app.get('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }))
 
-// test route to check if server is running
-app.get('/health', (c) => {
-    return c.json({
-        status: 'ok',
-        timestamp: new Date().toISOString() // ISO format timestamp
-    })
-})
-
-// auth routes
+// 4. API ROUTES
 app.route('/api/auth', authRoutes)
 
-// '*' means apply to every single request, global configuration
-app.use('/api/transactions/*', authMiddleware) // protect all /transactions routes with auth
-// this line is optional and can be removed if authMiddleware is already present in the transactions route file inside each API
-
-// takes collection of routes from another file and attaches them to a prefix
-// keeps the main file clean and readable
+// Protect transactions
+app.use('/api/transactions/*', authMiddleware)
 app.route('/api/transactions', transactionRoutes)
-
-// middleware
-app.get('/api/protected', authMiddleware, (c) => {
-    const user = c.get('user') as any // get user info from context
-    return c.json({
-        message: 'This is a protected route',
-        user
-    })
-})
 
 export default app

@@ -69,6 +69,54 @@ export default function DashboardPage() {
 
   const isIncome = (desc: string) => desc.toLowerCase().match(/salary|refund|credited|received|deposit/);
 
+  const handleExtract = async () => {
+    if (!text.trim()) {
+      toast.error("Please paste some transaction text first.");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const res = await transactionAPI.extract(text);
+      
+      if (res.data && res.data.transaction) {
+        // Use functional update to ensure we don't lose existing data
+        setTransactions((prev) => [res.data.transaction, ...prev]);
+        setText(""); 
+        toast.success("Transaction extracted successfully!");
+      }
+    } catch (error: any) {
+      console.error("Extraction failed:", error);
+      toast.error(error.response?.data?.error || "Failed to connect to AI");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 2. Find the Button in your JSX (near the bottom of the file) and update it:
+  <CardContent className="space-y-4">
+    <Textarea 
+      placeholder="Paste bank SMS here..." 
+      value={text} 
+      onChange={(e) => setText(e.target.value)} 
+      className="dark:bg-slate-800 border-none min-h-[100px] focus-visible:ring-blue-500" 
+    />
+    
+    <Button 
+      onClick={handleExtract} // <--- ADD THIS LINE
+      disabled={isLoading || !text.trim()} // Prevent double-clicks
+      className="w-full bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-500/20"
+    >
+      {isLoading ? (
+        <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>
+      ) : (
+        "Extract with AI"
+      )}
+    </Button>
+    
+    <BulkUpload onSuccess={(t) => setTransactions((prev) => [t, ...prev])} />
+  </CardContent>
+
   // Advanced Filter Logic
   const filteredData = useMemo(() => {
     return transactions.filter((t) => {
@@ -119,6 +167,15 @@ export default function DashboardPage() {
 
     return { barData: bar, pieData: pie, stats: { inc, exp, net: inc - exp }, budgetAlert: alert };
   }, [filteredData]);
+
+  // Find your button in the JSX and update it:
+  <Button 
+      onClick={handleExtract} // <--- ADD THIS
+      disabled={isLoading || !text.trim()}
+      className="w-full bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-500/20"
+  >
+      {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Extract with AI"}
+  </Button>
 
   const fetchTransactions = async () => {
     setIsLoading(true);
@@ -224,7 +281,7 @@ export default function DashboardPage() {
               <CardContent className="space-y-4">
                 <Textarea placeholder="Paste bank SMS here..." value={text} onChange={(e) => setText(e.target.value)} className="dark:bg-slate-800 border-none min-h-[100px] focus-visible:ring-blue-500" />
                 <Button className="w-full bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-500/20">Extract with AI</Button>
-                <BulkUpload onSuccess={(t) => setTransactions([t, ...transactions])} />
+                <BulkUpload onSuccess={(t) => setTransactions((prev) => [t, ...prev])} />
               </CardContent>
             </Card>
             <AIChat />

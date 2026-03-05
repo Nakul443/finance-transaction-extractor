@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { transactionAPI } from '@/lib/api'
 import { toast } from 'sonner'
-import { Loader2, UploadCloud, CheckCircle2 } from 'lucide-react'
+import { Loader2, UploadCloud } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -27,8 +27,12 @@ export function BulkUpload({ onSuccess }: BulkUploadProps) {
   const [progress, setProgress] = useState(0)
 
   const handleBulkProcess = async () => {
-    // Split by double newlines or single newlines to find individual messages
-    const lines = rawText.split(/\n\n|\r\n\r\n/).filter(line => line.trim().length > 10)
+    // 1. IMPROVED REGEX: Splits by double newlines OR single newlines 
+    // effectively catching different paste formats.
+    const lines = rawText
+      .split(/\n+/) 
+      .map(line => line.trim())
+      .filter(line => line.length > 10) 
     
     if (lines.length === 0) {
       toast.error("No valid transaction text found.")
@@ -39,18 +43,31 @@ export function BulkUpload({ onSuccess }: BulkUploadProps) {
     setProgress(0)
     let successCount = 0
 
+    // 2. SEQUENTIAL PROCESSING: 
+    // We loop through each line and hit the AI extractor.
     for (let i = 0; i < lines.length; i++) {
       try {
         const response = await transactionAPI.extract(lines[i])
-        onSuccess(response.data.transaction)
-        successCount++
+        
+        // Ensure we handle the nested 'transaction' object from your Hono response
+        if (response.data && response.data.transaction) {
+           onSuccess(response.data.transaction)
+           successCount++
+        }
       } catch (error) {
-        console.error("Failed to process line:", lines[i])
+        console.error(`Failed to process: ${lines[i]}`, error)
       }
+      
+      // Update progress bar
       setProgress(((i + 1) / lines.length) * 100)
     }
 
-    toast.success(`Processed ${successCount} transactions!`)
+    if (successCount > 0) {
+      toast.success(`Successfully imported ${successCount} transactions!`)
+    } else {
+      toast.error("Could not extract any transactions. Check backend logs.")
+    }
+
     setIsProcessing(false)
     setRawText('')
     setIsOpen(false)
@@ -67,29 +84,34 @@ export function BulkUpload({ onSuccess }: BulkUploadProps) {
         <DialogHeader>
           <DialogTitle>Bulk Transaction Import</DialogTitle>
           <DialogDescription>
-            Paste multiple bank SMS alerts or statement rows. Separate each entry with a double enter.
+            Paste your bank alerts below. Our AI will split and process each transaction automatically.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <Textarea
-            placeholder="Transaction 1...&#10;&#10;Transaction 2..."
+            placeholder="Paste your messages here..."
             value={rawText}
             onChange={(e) => setRawText(e.target.value)}
             rows={10}
             disabled={isProcessing}
+            className="font-mono text-sm"
           />
           {isProcessing && (
             <div className="space-y-2">
               <div className="flex justify-between text-xs font-medium">
-                <span>Processing with Local AI...</span>
+                <span>AI is extracting data...</span>
                 <span>{Math.round(progress)}%</span>
               </div>
               <Progress value={progress} className="h-2" />
             </div>
           )}
-          <Button onClick={handleBulkProcess} disabled={isProcessing || !rawText.trim()}>
+          <Button 
+            onClick={handleBulkProcess} 
+            disabled={isProcessing || !rawText.trim()}
+            className="w-full"
+          >
             {isProcessing ? (
-              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing {Math.round(progress)}%</>
             ) : (
               'Start Import'
             )}
