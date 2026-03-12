@@ -2,7 +2,13 @@
 https://finance-transactionextractor7070.vercel.app/
 
 
-
+## example strings:
+"Your HDFC Bank Debit Card xx1234 has been spent for ₹2,450.00 at STARBUCKS COFFEE on 25-Feb-26. Avl bal: ₹45,200."
+"Money Sent: ₹500.00 to amanjain@okicici. Ref No: 605691023412. Your account xx789 has been debited."
+"Your card was charged Rs. 199 at Netflix.com. Thank you for your payment."
+"Payment of ₹1,200.50 for your Airtel Postpaid bill was successful on 24/02/2026."
+"I just paid 350 bucks for the auto ride to the office."
+"Order Placed: ₹3,420.50 at Amazon India for Electronics. Expected delivery by Thursday."
 
 # 🏦 Financial Transaction Extractor
 
